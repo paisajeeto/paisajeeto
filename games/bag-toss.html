@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bag Toss — Rupiyo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:#17301c; color:#fff; user-select:none; -webkit-user-select:none; touch-action:none; }
+  #wrap { position:fixed; inset:0; max-width:520px; margin:0 auto; }
+  canvas { display:block; width:100%; height:100%; touch-action:none; }
+  #hud { position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:12px 14px; pointer-events:none; z-index:3; }
+  #scoreBox { font-size:40px; font-weight:800; text-shadow:0 3px 0 rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.4); }
+  #bestBox { font-size:13px; font-weight:700; background:rgba(0,0,0,.35); padding:6px 12px; border-radius:999px; }
+  #muteBtn { pointer-events:auto; background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.25); color:#fff; width:42px; height:42px; border-radius:50%; font-size:19px; cursor:pointer; }
+  #chips { position:absolute; top:64px; left:0; right:0; display:flex; justify-content:center; gap:8px; z-index:3; pointer-events:none; }
+  .chip { font-size:15px; font-weight:800; background:rgba(0,0,0,.4); padding:6px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.18); }
+  #objective { position:absolute; top:106px; left:8px; right:8px; text-align:center; font-size:13px; font-weight:800; background:rgba(0,0,0,.35); padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.15); z-index:3; pointer-events:none; }
+  #centerMsg { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:4; pointer-events:none; text-align:center; padding:20px; }
+  #countNum { font-size:110px; font-weight:800; color:#f5c542; text-shadow:0 5px 0 #b97e00, 0 10px 30px rgba(0,0,0,.5); display:none; }
+  .panel { background:rgba(13,16,22,.92); border:1px solid rgba(255,255,255,.14); border-radius:22px; padding:26px 30px; pointer-events:auto; box-shadow:0 18px 50px rgba(0,0,0,.55); max-width:86%; }
+  .panel h1 { font-size:30px; margin-bottom:4px; }
+  .panel h1 span { color:#f5c542; }
+  .panel .sub { opacity:.75; font-size:14px; line-height:1.5; margin-bottom:14px; }
+  .panel .bigscore { font-size:52px; font-weight:800; color:#f5c542; line-height:1; }
+  .panel .bestline { font-size:14px; opacity:.8; margin:6px 0 16px; }
+  .btn { display:inline-block; border:none; cursor:pointer; font-weight:800; border-radius:14px; padding:14px 26px; font-size:17px; background:linear-gradient(135deg,#f5c542,#e08b00); color:#231600; box-shadow:0 5px 14px rgba(0,0,0,.35); }
+  .btn:active { transform:scale(.96); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div id="scoreBox">0</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div id="bestBox">🏆 0</div>
+      <button id="muteBtn" title="Sound on/off">🔊</button>
+    </div>
+  </div>
+  <div id="chips">
+    <div class="chip" id="bagBox">🟦 ×10</div>
+    <div class="chip" id="windBox">Wind 💨 calm</div>
+  </div>
+  <div id="objective">🎯 Hole = 5 • Ring = 3 • Board = 2 • 10 bags — mind the wind!</div>
+  <div id="centerMsg">
+    <div id="countNum">3</div>
+    <div class="panel" id="startPanel">
+      <h1>🎯 Bag <span>Toss</span></h1>
+      <div class="sub">Pull the bag back like a slingshot, aim the X, and let go!<br>Land it in the hole for 5 points.<br>Hole = 5 · Ring = 3 · Board = 2 — mind the wind 💨. 10 bags!</div>
+      <button class="btn" id="startBtn">▶ Play</button>
+    </div>
+    <div class="panel hidden" id="overPanel">
+      <h1>Game Over</h1>
+      <div class="bigscore" id="finalScore">0</div>
+      <div class="bestline" id="finalBest">Best: 0</div>
+      <button class="btn" id="againBtn">↻ Play Again</button>
+      <div class="sub hidden" id="againNote" style="margin:12px 0 0">Close this game (← Back) and use your next attempt from the app</div>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+/* ============ Rupiyo score bridge ============ */
+var GAME_ID = 'bag-toss';
+try { GAME_ID = new URLSearchParams(location.search).get('rp_game') || GAME_ID; } catch (e) {}
+var CHALLENGE = false;
+try { CHALLENGE = new URLSearchParams(location.search).get('mode') === 'challenge'; } catch (e) {}
+var CHAL_TARGET = 20, CHAL_BAGS = 8;
+var scoreSent = false;
+function reportScore(s) {
+  if (scoreSent) return; scoreSent = true;
+  s = Math.max(0, Math.floor(s));
+  try { parent.postMessage({ type: 'rupiyo:score', game: GAME_ID, score: s }, '*'); } catch (e) {}
+  try { if (window.RupiyoBridge && window.RupiyoBridge.postScore) window.RupiyoBridge.postScore(s); } catch (e) {}
+}
+
+/* ============ Interstitial ad helper ============ */
+function rpAd(cb){ if(window.parent===window){ cb(); return; } let done=false; const fin=()=>{ if(done) return; done=true; window.removeEventListener('message',h); cb(); }; const h=e=>{ if(e.data && e.data.type==='rupiyo:ad-done') fin(); }; window.addEventListener('message',h); try{ parent.postMessage({type:'rupiyo:ad',kind:'interstitial'},'*'); }catch(_){ } setTimeout(fin,5000); }
+
+/* ============ Audio (all synthesized) ============ */
+var AC = null, muted = false;
+function ac() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(freq, dur, type, vol, slideTo, delay) {
+  if (muted) return; var c = ac(); if (!c) return;
+  var t0 = c.currentTime + (delay || 0);
+  var o = c.createOscillator(), g = c.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
+  g.gain.setValueAtTime(vol || 0.15, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(g); g.connect(c.destination);
+  o.start(t0); o.stop(t0 + dur + 0.02);
+}
+function noiseBurst(dur, vol, freq) {
+  if (muted) return; var c = ac(); if (!c) return;
+  var n = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+  for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  var src = c.createBufferSource(); src.buffer = buf;
+  var f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq || 1200; f.Q.value = 0.8;
+  var g = c.createGain(); g.gain.value = vol || 0.2;
+  src.connect(f); f.connect(g); g.connect(c.destination); src.start();
+}
+function sfxThrow() { noiseBurst(0.28, 0.15, 850); }
+function sfxThud() { noiseBurst(0.12, 0.22, 280); tone(110, 0.1, 'sine', 0.13, 60); }
+function sfxBoard() { noiseBurst(0.09, 0.2, 720); tone(190, 0.09, 'triangle', 0.12, 120); }
+function sfxHole() { noiseBurst(0.2, 0.14, 500); tone(659, 0.11, 'square', 0.1, null, 0.05); tone(880, 0.11, 'square', 0.1, null, 0.16); tone(1319, 0.26, 'square', 0.11, null, 0.27); }
+function sfxNear() { tone(740, 0.1, 'triangle', 0.12); tone(988, 0.16, 'triangle', 0.11, null, 0.08); }
+function sfxCount(final) { tone(final ? 880 : 440, final ? 0.22 : 0.12, 'sine', 0.14); }
+function sfxEnd() { tone(520, 0.14, 'sine', 0.13); tone(660, 0.14, 'sine', 0.13, null, 0.13); tone(880, 0.3, 'sine', 0.14, null, 0.26); }
+
+/* ============ Canvas setup ============ */
+var cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+var W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+/* ============ Board geometry ============ */
+function boardGeom() {
+  var cx = W / 2, nearY = H * 0.42, farY = H * 0.205;
+  var nearHalf = W * 0.40, farHalf = W * 0.235;
+  var holeU = 0.74;
+  var holeY = farY + (1 - holeU) * (nearY - farY);
+  var holeHalf = nearHalf + (farHalf - nearHalf) * holeU;
+  return { cx: cx, nearY: nearY, farY: farY, nearHalf: nearHalf, farHalf: farHalf, holeU: holeU, holeX: cx, holeY: holeY, holeRX: holeHalf * 0.338, holeRY: (nearY - farY) * 0.15 };
+}
+function toUV(x, y) {
+  var g = boardGeom();
+  var u = (g.nearY - y) / (g.nearY - g.farY);
+  var half = g.nearHalf + (g.farHalf - g.nearHalf) * u;
+  return { u: u, v: (x - g.cx) / half, half: half };
+}
+function fromUV(u, v) {
+  var g = boardGeom();
+  var y = g.farY + (1 - u) * (g.nearY - g.farY);
+  var half = g.nearHalf + (g.farHalf - g.nearHalf) * u;
+  return { x: g.cx + v * half, y: y, half: half };
+}
+
+/* ============ Game state ============ */
+var state = 'ready'; // ready | count | play | over
+var sub = 'aim';     // aim | drag | fly | rest
+var countT = 0, lastCount = 4;
+var score = 0, best = 0;
+try { best = parseInt(localStorage.getItem('rp_best_' + GAME_ID) || '0', 10) || 0; } catch (e) {}
+var time = 0, shake = 0;
+var bagsLeft, wind, landed, parts, pops, overAt;
+var bag = null, restT = 0;
+var pull = null;              // current pull-back drag vector {dx, dy} while aiming
+var coachStep = 0;            // 0 pull · 1 aim · 2 release · 3 done (teaching hints)
+var threwOnce = false;
+var BAG_COLORS = ['#e63946', '#f5c542', '#3a86ff', '#8338ec', '#ff7b1c', '#2ec4b6', '#ef476f', '#06d6a0', '#118ab2', '#ffd166'];
+
+function startPos() { return { x: W / 2, y: H * 0.88 }; }
+function newWind() {
+  var dir = Math.random() < 0.5 ? -1 : 1;
+  var str = Math.random() < 0.25 ? 0 : 1 + Math.floor(Math.random() * 3);
+  wind = { dir: dir, str: str };
+}
+function reset() {
+  score = 0; scoreSent = false;
+  bagsLeft = CHALLENGE ? CHAL_BAGS : 10; landed = []; parts = []; pops = [];
+  sub = 'aim'; bag = null; pull = null;
+  coachStep = 0; threwOnce = false;
+  newWind();
+  updateHud();
+}
+function windText() {
+  if (!wind || wind.str === 0) return 'Wind 💨 calm';
+  var arrows = '', word = wind.str === 1 ? 'light' : wind.str === 2 ? 'fresh' : 'strong';
+  for (var i = 0; i < wind.str; i++) arrows += wind.dir < 0 ? '←' : '→';
+  return 'Wind 💨 ' + arrows + ' ' + word;
+}
+function updateHud() {
+  document.getElementById('scoreBox').textContent = score;
+  document.getElementById('bestBox').textContent = '🏆 ' + Math.max(best, score);
+  document.getElementById('bagBox').textContent = '🟦 ×' + bagsLeft;
+  document.getElementById('windBox').textContent = windText();
+  if (CHALLENGE) document.getElementById('objective').textContent = '🏆 Score 20+ to WIN — now: ' + score;
+}
+function burst(x, y, n, colors, spd) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random() * Math.PI * 2, v = (0.3 + Math.random() * 0.7) * (spd || 220);
+    parts.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: 0.5 + Math.random() * 0.4, t: 0, c: colors[i % colors.length], r: 2.5 + Math.random() * 3.5 });
+  }
+}
+function popup(x, y, txt, color) { pops.push({ x: x, y: y, txt: txt, t: 0, c: color || '#ffd94d' }); }
+
+function startCountdown() {
+  reset();
+  state = 'count'; countT = 0; lastCount = 4;
+  document.getElementById('startPanel').classList.add('hidden');
+  document.getElementById('overPanel').classList.add('hidden');
+  document.getElementById('countNum').style.display = 'block';
+  ac();
+}
+function gameOver() {
+  if (state === 'over') return;
+  state = 'over'; overAt = time;
+  sfxEnd();
+  if (score > best) { best = score; try { localStorage.setItem('rp_best_' + GAME_ID, String(best)); } catch (e) {} }
+  var won = !CHALLENGE || score >= CHAL_TARGET;
+  reportScore(won ? score : 0);
+  if (CHALLENGE && !won) {
+    document.querySelector('#overPanel h1').textContent = '💀 Defeated!';
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('finalBest').textContent = 'You scored ' + score + ' — needed 20';
+  } else {
+    if (CHALLENGE) document.querySelector('#overPanel h1').textContent = '🏆 You Win!';
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('finalBest').textContent = 'Best: ' + best;
+  }
+  setTimeout(function () { document.getElementById('overPanel').classList.remove('hidden'); }, 450);
+  updateHud();
+}
+
+/* ============ Throwing ============ */
+/* Pull-back control — the ONLY way to throw. The player presses near the bag
+   and drags DOWN/BACK: the drag vector becomes the throw velocity.
+   Pulling down loads power (bag flies up-screen); sideways offset steers.
+   pullVelocity feeds BOTH throwBag and the aim guide through predictLanding,
+   so the dotted preview always matches the real throw exactly. */
+var PULL_MAX = 190; // full power at a comfortable ~190px drag
+function pullPower() {
+  if (!pull) return 0;
+  return Math.min(1, Math.max(0, pull.dy) / PULL_MAX);
+}
+function pullVelocity() {
+  if (!pull) return null;
+  var f = Math.min(1, Math.max(0, pull.dy) / PULL_MAX); // downward pull = power
+  var vx = Math.max(-1, Math.min(1, -pull.dx / 160));   // sideways pull steers
+  return { vx: vx, vy: -f * 1.08 };
+}
+/* Single source of truth for where a toss lands — used by throwBag AND the aim guide,
+   so the dotted preview always matches the real throw exactly. */
+function predictLanding(vx, vy) {
+  var s = startPos();
+  var g = boardGeom();
+  var power = -vy; // 0 .. ~1.08
+  // power → board depth u (0 = near edge, 1 = far edge, hole sits at u = 0.74):
+  // a ~55–70% pull lands mid-board, ~80–95% threatens the hole, full power just past it
+  var u = power * 1.18 - 0.30;
+  var landY = g.nearY - u * (g.nearY - g.farY);
+  landY = Math.max(H * 0.09, Math.min(H * 0.965, landY));
+  var landX = s.x + vx * (H * 0.26);
+  landX = Math.max(14, Math.min(W - 14, landX));
+  var T = 0.55 + Math.min(0.45, power * 0.35);
+  var arc = 60 + power * 70;
+  return { sx: s.x, sy: s.y, lx: landX, ly: landY, T: T, arc: arc, windOff: wind.dir * wind.str * 24 * (CHALLENGE ? 1.6 : 1) };
+}
+/* Scoring for a landing point. Hole zone includes a magnet: within 1.15× the
+   (now 1.3× bigger) hole radius the bag drops in. Ring = within 2.15×. */
+function scoreAt(fx, fy) {
+  var g = boardGeom();
+  var uv = toUV(fx, fy);
+  // aim assist: a landing within ~14px of the board's edge slides on and counts
+  var uTol = 14 / (g.nearY - g.farY);
+  var vTol = uv.half > 0 ? 14 / uv.half : 0.1;
+  var onBoard = uv.u >= -uTol && uv.u <= 1 + uTol * 0.4 && Math.abs(uv.v) <= 1 + vTol;
+  var dh = Math.sqrt(Math.pow((fx - g.holeX) / g.holeRX, 2) + Math.pow((fy - g.holeY) / g.holeRY, 2));
+  var pts = 0;
+  if (onBoard && dh < 1.15) pts = 5;
+  else if (onBoard && dh < 2.15) pts = 3;
+  else if (onBoard) pts = 2;
+  return { pts: pts, onBoard: onBoard, dh: dh, uv: uv };
+}
+function throwBag(vx, vy) {
+  var P = predictLanding(vx, vy);
+  bag = {
+    sx: P.sx, sy: P.sy, lx: P.lx, ly: P.ly, T: P.T, t: 0, arc: P.arc,
+    x: P.sx, y: P.sy, rot: 0, spin: (vx >= 0 ? 1 : -1) * (2.4 + Math.random() * 2),
+    windOff: P.windOff, color: BAG_COLORS[(10 - bagsLeft) % BAG_COLORS.length],
+    gx: 0, gy: 0, scale: 1
+  };
+  sub = 'fly';
+  sfxThrow();
+}
+function landBag() {
+  var fx = bag.lx + bag.windOff, fy = bag.ly;
+  var sc = scoreAt(fx, fy);
+  var uv = sc.uv, onBoard = sc.onBoard, inHole = sc.pts === 5;
+  var pts = sc.pts, msg = '', col = '#ffffff';
+  if (pts === 5) { msg = 'IN THE HOLE! +5'; col = '#ffd94d'; sfxHole(); shake = Math.max(shake, 6); }
+  else if (pts === 3) { msg = 'SO CLOSE! +3'; col = '#8aff80'; sfxNear(); }
+  else if (pts === 2) { msg = 'ON BOARD +2'; col = '#b6ff7a'; sfxBoard(); }
+  else { msg = 'MISS! 0'; col = '#ff9d9d'; sfxThud(); }
+  score += pts;
+  var restU = uv.u, restV = uv.v;
+  if (onBoard && !inHole) {
+    restU = Math.max(0.03, Math.min(0.97, uv.u - 0.045)); // little slide down the board
+    restV = Math.max(-0.96, Math.min(0.96, uv.v));        // slide-on bags stay on the board
+    var rp = fromUV(restU, restV);
+    fx = rp.x; fy = rp.y;
+  }
+  threwOnce = true; coachStep = 3;
+  landed.push({ u: restU, v: restV, x: fx, y: fy, inHole: inHole, color: bag.color, rot: bag.rot, sink: 0, settle: 0 });
+  popup(fx, fy - 34, msg, col);
+  burst(fx, fy, inHole ? 22 : 9, inHole ? ['#ffd94d', '#ffffff', bag.color] : ['#8ed08a', '#ffffff'], inHole ? 280 : 140);
+  bag = null;
+  bagsLeft--;
+  sub = 'rest'; restT = 0.85;
+  updateHud();
+}
+
+/* ============ Update ============ */
+function update(dt) {
+  time += dt;
+  var i, p;
+  for (i = parts.length - 1; i >= 0; i--) { p = parts[i]; p.t += dt; p.vy += 700 * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.t > p.life) parts.splice(i, 1); }
+  for (i = pops.length - 1; i >= 0; i--) { pops[i].t += dt; pops[i].y -= 42 * dt; if (pops[i].t > 1.05) pops.splice(i, 1); }
+  if (shake > 0) shake = Math.max(0, shake - dt * 30);
+  for (i = 0; i < landed.length; i++) {
+    if (landed[i].inHole && landed[i].sink < 1) landed[i].sink = Math.min(1, landed[i].sink + dt * 3);
+    if (landed[i].settle < 0.3) landed[i].settle += dt;
+  }
+
+  if (state === 'count') {
+    countT += dt;
+    var n = 3 - Math.floor(countT);
+    if (n !== lastCount && n >= 1) { lastCount = n; sfxCount(false); var el = document.getElementById('countNum'); el.textContent = n; el.style.transform = 'scale(1.25)'; setTimeout(function () { el.style.transform = 'scale(1)'; }, 90); }
+    if (countT >= 3) { state = 'play'; document.getElementById('countNum').style.display = 'none'; sfxCount(true); }
+    return;
+  }
+  if (state !== 'play') return;
+
+  if (sub === 'fly' && bag) {
+    bag.t += dt;
+    var pr = Math.min(1, bag.t / bag.T);
+    bag.gx = bag.sx + (bag.lx - bag.sx) * pr + bag.windOff * pr * pr;
+    bag.gy = bag.sy + (bag.ly - bag.sy) * pr;
+    bag.x = bag.gx;
+    bag.y = bag.gy - Math.sin(pr * Math.PI) * bag.arc;
+    bag.scale = 1 - 0.42 * pr;
+    bag.rot += bag.spin * dt;
+    if (pr >= 1) landBag();
+  } else if (sub === 'rest') {
+    restT -= dt;
+    if (restT <= 0) {
+      if (bagsLeft <= 0) { gameOver(); return; }
+      newWind(); sub = 'aim'; coachStep = 0; updateHud();
+    }
+  }
+}
+
+/* ============ Draw ============ */
+/* 3-step teaching bar: ticks each step off in order, fades out forever
+   after the first successful throw (threwOnce). */
+function drawCoachBar() {
+  if (threwOnce || coachStep > 2) return;
+  var steps = ['1️⃣ Pull back', '2️⃣ Aim the X', '3️⃣ Release!'];
+  var y = H * 0.665, bw = Math.min(W - 24, 396), bh = 34, x0 = (W - bw) / 2;
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,20,10,.78)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x0, y, bw, bh, 17); else ctx.rect(x0, y, bw, bh);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  var pulse = coachStep === 0 ? 0.72 + 0.28 * Math.sin(time * 5) : 1;
+  for (var i = 0; i < 3; i++) {
+    var cxp = x0 + (bw / 3) * (i + 0.5);
+    ctx.font = (i === coachStep ? '800 ' : '700 ') + '12px system-ui, sans-serif';
+    ctx.fillStyle = i < coachStep ? '#8aff80' : i === coachStep ? '#ffd94d' : 'rgba(255,255,255,.45)';
+    ctx.globalAlpha = i === coachStep ? pulse : 1;
+    ctx.fillText((i < coachStep ? '✅ ' : '') + steps[i], cxp, y + bh / 2 + 1);
+  }
+  ctx.restore();
+}
+function drawGuide(P, alphaMul) {
+  ctx.save();
+  // dotted predicted flight path — same parametric path the bag will actually fly
+  ctx.fillStyle = '#ffffff';
+  for (var pr = 0.04; pr <= 1.001; pr += 0.055) {
+    var pc = Math.min(1, pr);
+    var px = P.sx + (P.lx - P.sx) * pc + P.windOff * pc * pc;
+    var py = P.sy + (P.ly - P.sy) * pc - Math.sin(pc * Math.PI) * P.arc;
+    ctx.globalAlpha = (0.95 - pc * 0.2) * alphaMul;
+    ctx.beginPath(); ctx.arc(px, py, 5.5, 0, Math.PI * 2); ctx.fill();
+  }
+  // landing marker: big pulsing X inside a ring, coloured by what that spot scores
+  var fx = P.lx + P.windOff, fy = P.ly;
+  var sc = scoreAt(fx, fy);
+  var col = sc.pts === 5 ? '#ffd94d' : sc.pts === 3 ? '#8aff80' : sc.pts === 2 ? '#b6ff7a' : '#ff8a8a';
+  var pulse = 1 + 0.09 * Math.sin(time * 6);
+  ctx.globalAlpha = alphaMul;
+  ctx.strokeStyle = col; ctx.lineWidth = 4.5;
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 6;
+  ctx.beginPath(); ctx.ellipse(fx, fy, 27 * pulse, 12 * pulse, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(fx - 11, fy - 6.5); ctx.lineTo(fx + 11, fy + 6.5);
+  ctx.moveTo(fx + 11, fy - 6.5); ctx.lineTo(fx - 11, fy + 6.5);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawAimGuide() {
+  var v = pullVelocity();
+  if (!v) return;
+  drawGuide(predictLanding(v.vx, v.vy), 1);
+}
+function drawDefaultGuide() {
+  // faint "this is how a good throw flies" preview shown before the player touches
+  drawGuide(predictLanding(0, -0.86), 0.35);
+}
+function drawPowerMeter() {
+  var f = pullPower();
+  var bx = W - 25, bh = Math.round(H * 0.30), by = Math.round(H * 0.50);
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx - 7, by, 14, bh, 7); else ctx.rect(bx - 7, by, 14, bh);
+  ctx.fill();
+  ctx.fillStyle = f < 0.5 ? '#8aff80' : f < 0.8 ? '#ffd94d' : '#ff8a5c';
+  var fh = Math.max(8, bh * f);
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(bx - 7, by + bh - fh, 14, fh, 7); else ctx.rect(bx - 7, by + bh - fh, 14, fh);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.font = '800 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillText('POWER', bx, by - 5);
+  ctx.restore();
+}
+function drawBagShape(x, y, size, rot, color, alpha) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.globalAlpha = alpha == null ? 1 : alpha;
+  var w = size, h = size * 0.82;
+  var g = ctx.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2);
+  g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-w / 2, -h / 2, w, h, size * 0.3); else ctx.rect(-w / 2, -h / 2, w, h);
+  ctx.fill();
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-w / 2, -h / 2, w, h, size * 0.3); else ctx.rect(-w / 2, -h / 2, w, h);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, size * 0.22); else ctx.rect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawBoard() {
+  var g = boardGeom();
+  // shadow (two-layer soft drop shadow)
+  ctx.fillStyle = 'rgba(0,0,0,.36)';
+  ctx.beginPath(); ctx.ellipse(g.cx, g.nearY + 17, g.nearHalf * 1.04, 18, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.16)';
+  ctx.beginPath(); ctx.ellipse(g.cx, g.nearY + 25, g.nearHalf * 0.9, 12, 0, 0, Math.PI * 2); ctx.fill();
+  // board body (trapezoid)
+  var bg2 = ctx.createLinearGradient(0, g.farY, 0, g.nearY);
+  bg2.addColorStop(0, '#c77b3f'); bg2.addColorStop(1, '#a05a24');
+  ctx.fillStyle = bg2;
+  ctx.beginPath();
+  ctx.moveTo(g.cx - g.farHalf, g.farY); ctx.lineTo(g.cx + g.farHalf, g.farY);
+  ctx.lineTo(g.cx + g.nearHalf, g.nearY); ctx.lineTo(g.cx - g.nearHalf, g.nearY);
+  ctx.closePath(); ctx.fill();
+  // plank shading bands (alternating tint per plank)
+  for (var bi = 1; bi < 4; bi += 2) {
+    var pa = fromUV(bi / 4, 0), pb = fromUV((bi + 1) / 4, 0);
+    ctx.fillStyle = 'rgba(0,0,0,.07)';
+    ctx.beginPath();
+    ctx.moveTo(g.cx - pb.half, pb.y); ctx.lineTo(g.cx + pb.half, pb.y);
+    ctx.lineTo(g.cx + pa.half, pa.y); ctx.lineTo(g.cx - pa.half, pa.y);
+    ctx.closePath(); ctx.fill();
+  }
+  // plank lines
+  ctx.strokeStyle = 'rgba(90,45,5,.4)'; ctx.lineWidth = 2;
+  for (var i = 1; i <= 3; i++) {
+    var u = i / 4, p = fromUV(u, 0);
+    ctx.beginPath(); ctx.moveTo(g.cx - p.half, p.y); ctx.lineTo(g.cx + p.half, p.y); ctx.stroke();
+  }
+  // wood grain strokes
+  ctx.strokeStyle = 'rgba(120,66,20,.30)'; ctx.lineWidth = 1.4;
+  for (var gi = 0; gi < 5; gi++) {
+    var gp = fromUV(0.14 + gi * 0.19, 0), gw = gp.half * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(gp.x - gw, gp.y);
+    ctx.quadraticCurveTo(gp.x - gw * 0.3, gp.y - 3, gp.x + gw * 0.4, gp.y + 1);
+    ctx.quadraticCurveTo(gp.x + gw * 0.8, gp.y + 3, gp.x + gw, gp.y - 1);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  var pn = fromUV(0, 0), pf = fromUV(1, 0);
+  ctx.moveTo(pn.x, pn.y); ctx.lineTo(pf.x, pf.y); ctx.stroke();
+  // border
+  ctx.strokeStyle = '#6e3d12'; ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(g.cx - g.farHalf, g.farY); ctx.lineTo(g.cx + g.farHalf, g.farY);
+  ctx.lineTo(g.cx + g.nearHalf, g.nearY); ctx.lineTo(g.cx - g.nearHalf, g.nearY);
+  ctx.closePath(); ctx.stroke();
+  // near ring (3-pt zone)
+  ctx.strokeStyle = 'rgba(255,217,77,.85)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(g.holeX, g.holeY, g.holeRX * 2.15, g.holeRY * 2.15, 0, 0, Math.PI * 2); ctx.stroke();
+  // hole
+  ctx.fillStyle = '#120a04';
+  ctx.beginPath(); ctx.ellipse(g.holeX, g.holeY, g.holeRX, g.holeRY, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.ellipse(g.holeX, g.holeY - 1.5, g.holeRX, g.holeRY, 0, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  // legs
+  ctx.fillStyle = '#6e3d12';
+  ctx.fillRect(g.cx - g.nearHalf + 8, g.nearY, 9, 15);
+  ctx.fillRect(g.cx + g.nearHalf - 17, g.nearY, 9, 15);
+}
+function draw() {
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  var i, g = boardGeom();
+  // sky strip
+  var sky = ctx.createLinearGradient(0, 0, 0, H * 0.16);
+  sky.addColorStop(0, '#79b5e0'); sky.addColorStop(1, '#cfeeff');
+  ctx.fillStyle = sky; ctx.fillRect(-20, -20, W + 40, H * 0.16 + 20);
+  ctx.fillStyle = '#fff7ae'; ctx.beginPath(); ctx.arc(46, 40, 19, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  ctx.beginPath(); ctx.arc(W - 80, 34, 14, 0, Math.PI * 2); ctx.arc(W - 62, 39, 11, 0, Math.PI * 2); ctx.arc(W - 95, 40, 10, 0, Math.PI * 2); ctx.fill();
+  // horizon trees + fence
+  ctx.fillStyle = '#2f6b33';
+  for (i = 0; i < 6; i++) { var tx = 18 + i * (W / 5.4); ctx.beginPath(); ctx.arc(tx, H * 0.145, 15 + (i % 3) * 4, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#8a6b42'; ctx.fillRect(-20, H * 0.155, W + 40, 5);
+  // lawn with mow stripes
+  var lawn = ctx.createLinearGradient(0, H * 0.16, 0, H);
+  lawn.addColorStop(0, '#57a84e'); lawn.addColorStop(1, '#2e6b2f');
+  ctx.fillStyle = lawn; ctx.fillRect(-20, H * 0.16, W + 40, H * 0.84 + 20);
+  ctx.fillStyle = 'rgba(255,255,255,.055)';
+  for (i = 0; i < 5; i++) {
+    if (i % 2) continue;
+    ctx.beginPath();
+    var y0 = H * 0.16 + i * H * 0.17;
+    ctx.moveTo(-20, y0); ctx.lineTo(W + 20, y0 + 26); ctx.lineTo(W + 20, y0 + 26 + H * 0.17); ctx.lineTo(-20, y0 + H * 0.17);
+    ctx.closePath(); ctx.fill();
+  }
+  drawBoard();
+  // landed bags (drop shadows + a little settle bounce on landing)
+  for (i = 0; i < landed.length; i++) {
+    var L = landed[i];
+    if (L.inHole) {
+      if (L.sink < 1) drawBagShape(g.holeX, g.holeY + L.sink * 5, 39 * (1 - L.sink * 0.75), L.rot, L.color, 1 - L.sink * 0.4);
+    } else {
+      var pp = (L.u >= 0 && L.u <= 1) ? fromUV(L.u, L.v) : { x: L.x, y: L.y };
+      var sc = (L.u >= 0 && L.u <= 1) ? 0.62 : 0.85;
+      ctx.fillStyle = 'rgba(0,0,0,.30)';
+      ctx.beginPath(); ctx.ellipse(pp.x, pp.y + 9 * sc + 3, 20 * sc + 4, 5.5 * sc + 1.5, 0, 0, Math.PI * 2); ctx.fill();
+      var sq = L.settle < 0.3 ? 1 - Math.sin(L.settle / 0.3 * Math.PI) * 0.20 : 1;
+      ctx.save(); ctx.translate(pp.x, pp.y); ctx.scale(1 + (1 - sq) * 0.7, sq); ctx.translate(-pp.x, -pp.y);
+      drawBagShape(pp.x, pp.y, 34 * sc + 8, L.rot, L.color, 1);
+      ctx.restore();
+    }
+  }
+  // wind flag on a pole beside the board
+  if (wind && wind.str > 0) {
+    var fx = g.cx + g.nearHalf + 14, fy = g.nearY;
+    if (fx < W - 30) {
+      ctx.strokeStyle = '#5c4326'; ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.moveTo(fx, fy + 6); ctx.lineTo(fx, fy - 52); ctx.stroke();
+      var wav = Math.sin(time * 7) * 3;
+      ctx.fillStyle = '#e63946';
+      ctx.beginPath();
+      ctx.moveTo(fx, fy - 52);
+      ctx.lineTo(fx + wind.dir * (13 + wind.str * 5), fy - 46 + wav);
+      ctx.lineTo(fx, fy - 39);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  // faint default trajectory while waiting for a touch; full guide + power meter while aiming
+  if (state === 'play' && sub === 'aim') drawDefaultGuide();
+  if (sub === 'drag' && state === 'play') { drawAimGuide(); drawPowerMeter(); }
+  // current bag — while pulling it follows the finger, with a stretch band + power ring
+  var s = startPos();
+  if (sub === 'aim' || sub === 'drag' || state === 'ready' || state === 'count') {
+    var bobY = s.y + Math.sin(time * 2.6) * 3;
+    var bx = s.x, by = bobY;
+    if (sub === 'drag' && pull) {
+      bx = s.x + pull.dx * 0.45; by = s.y + pull.dy * 0.45;
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 3;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.setLineDash([]);
+      var pw = pullPower();
+      ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(bx, by, 32, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = pw < 0.45 ? '#8aff80' : pw < 0.75 ? '#ffd94d' : '#ff8a5c';
+      ctx.beginPath(); ctx.arc(bx, by, 32, -Math.PI / 2, -Math.PI / 2 + pw * Math.PI * 2); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(bx, by + 22, 25, 7, 0, 0, Math.PI * 2); ctx.fill();
+    drawBagShape(bx, by, 44, Math.sin(time * 2) * 0.06, BAG_COLORS[(10 - bagsLeft) % BAG_COLORS.length], 1);
+    // pulsing arrow on the bag before the first pull
+    if (sub === 'aim' && state === 'play' && !threwOnce) {
+      var abob = Math.sin(time * 4.5) * 5;
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '800 30px system-ui, sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 7;
+      ctx.fillStyle = '#ffd94d';
+      ctx.fillText('👇', s.x, s.y + 58 + abob);
+      ctx.restore();
+    }
+  } else if (sub === 'fly' && bag) {
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(bag.gx, bag.gy + 8, 24 * bag.scale + 6, 6.5 * bag.scale + 2, 0, 0, Math.PI * 2); ctx.fill();
+    drawBagShape(bag.x, bag.y, 46 * bag.scale, bag.rot, bag.color, 1);
+  }
+  if (state === 'play') drawCoachBar();
+  // particles
+  for (i = 0; i < parts.length; i++) { var q = parts[i]; ctx.globalAlpha = 1 - q.t / q.life; ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  // popups
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (i = 0; i < pops.length; i++) { var pp2 = pops[i]; ctx.globalAlpha = 1 - pp2.t / 1.05; ctx.font = '800 22px system-ui, sans-serif'; ctx.fillStyle = pp2.c; ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 4.5; ctx.strokeText(pp2.txt, pp2.x, pp2.y); ctx.fillText(pp2.txt, pp2.x, pp2.y); }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ============ Loop ============ */
+var lastT = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!lastT) lastT = ts;
+  var dt = (ts - lastT) / 1000; lastT = ts;
+  if (dt > 0.05) dt = 0.05;
+  if (!document.hidden) { update(dt); draw(); }
+}
+
+/* ============ Input ============ */
+/* Coordinate mapping: client (CSS) px → game px via the canvas rect.
+   The canvas is CSS-sized to its wrap, so game coords == CSS px offsets
+   from the rect's top-left (DPR only affects the backing store). */
+function mapPoint(clientX, clientY, rect) {
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+function ptrPos(e) { return mapPoint(e.clientX, e.clientY, cv.getBoundingClientRect()); }
+/* Pointer events are the primary path; touch events are a fallback for
+   WebViews with flaky pointer support. A latch makes whichever fires first
+   own the gesture, so one drag never double-fires. The pull is measured
+   from where the finger GRABBED (anywhere on the canvas), so the player can
+   start mid-screen and drag a full, comfortable stroke — the old code
+   measured from the bag at 0.88H, leaving ~90px of drag room on a phone. */
+var gestureSrc = null, grabPt = null;
+function claimGesture(src) { if (gestureSrc && gestureSrc !== src) return false; gestureSrc = src; return true; }
+function freeGesture(src) { if (gestureSrc === src) gestureSrc = null; }
+function dragStart(p) {
+  ac();
+  if (state !== 'play' || sub !== 'aim') return;
+  grabPt = p;
+  sub = 'drag';
+  pull = { dx: 0, dy: 0 };
+}
+function dragMove(p) {
+  if (sub !== 'drag' || !pull || !grabPt) return;
+  var dx = p.x - grabPt.x, dy = p.y - grabPt.y;
+  var len = Math.sqrt(dx * dx + dy * dy);
+  if (len > PULL_MAX) { dx *= PULL_MAX / len; dy *= PULL_MAX / len; }
+  pull.dx = dx; pull.dy = dy;
+  if (len > 12 && coachStep === 0) coachStep = 1; // pulling has begun, now aim
+  if (pullPower() > 0.12 && coachStep === 1) coachStep = 2; // real power → "Release!"
+}
+function endDrag() {
+  grabPt = null;
+  if (sub !== 'drag') return;
+  var v = pullVelocity();
+  pull = null;
+  sub = 'aim';
+  if (state !== 'play' || !v) { coachStep = threwOnce ? 3 : 0; return; }
+  // a pull with almost no downward load isn't a throw — snap back, no bag wasted
+  if (-v.vy < 0.28) { coachStep = threwOnce ? 3 : 0; return; }
+  throwBag(v.vx, v.vy);
+}
+function dragCancel() {
+  grabPt = null;
+  if (sub === 'drag') { sub = 'aim'; pull = null; coachStep = threwOnce ? 3 : 0; }
+}
+cv.addEventListener('pointerdown', function (e) {
+  if (!claimGesture('pointer')) return;
+  e.preventDefault();
+  dragStart(ptrPos(e));
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+});
+cv.addEventListener('pointermove', function (e) { if (gestureSrc === 'pointer') dragMove(ptrPos(e)); });
+cv.addEventListener('pointerup', function (e) { if (gestureSrc !== 'pointer') return; e.preventDefault(); endDrag(); freeGesture('pointer'); });
+cv.addEventListener('pointercancel', function () { if (gestureSrc !== 'pointer') return; dragCancel(); freeGesture('pointer'); });
+cv.addEventListener('touchstart', function (e) {
+  if (!claimGesture('touch')) return;
+  e.preventDefault();
+  var t = e.touches[0]; if (t) dragStart(ptrPos(t));
+}, { passive: false });
+cv.addEventListener('touchmove', function (e) {
+  if (gestureSrc !== 'touch') return;
+  e.preventDefault(); // the WebView must never scroll/steal the gesture
+  var t = e.touches[0]; if (t) dragMove(ptrPos(t));
+}, { passive: false });
+cv.addEventListener('touchend', function (e) { if (gestureSrc !== 'touch') return; e.preventDefault(); endDrag(); freeGesture('touch'); }, { passive: false });
+cv.addEventListener('touchcancel', function () { if (gestureSrc !== 'touch') return; dragCancel(); freeGesture('touch'); });
+document.getElementById('startBtn').addEventListener('click', function (e) { e.stopPropagation(); startCountdown(); });
+document.getElementById('againBtn').addEventListener('click', function (e) { e.stopPropagation(); if (CHALLENGE) return; rpAd(function () { startCountdown(); }); });
+document.getElementById('muteBtn').addEventListener('click', function (e) {
+  e.stopPropagation(); muted = !muted; this.textContent = muted ? '🔇' : '🔊'; if (!muted) ac();
+});
+document.addEventListener('visibilitychange', function () { lastT = 0; });
+
+if (CHALLENGE) {
+  document.querySelector('#startPanel .sub').innerHTML = 'Pull the bag back like a slingshot, aim the X, and let go!<br>🏆 CHALLENGE: only 8 bags and stronger wind — score 20+ to WIN!<br>Hole = 5 · Ring = 3 · Board = 2 — mind the wind 💨.';
+  document.getElementById('againBtn').classList.add('hidden');
+  document.getElementById('againNote').classList.remove('hidden');
+  document.getElementById('objective').textContent = '🏆 Score 20+ to WIN — now: 0';
+}
+
+resize(); reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

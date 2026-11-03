@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Hill Rider — Rupiyo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; overflow:hidden; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:#0e2233; color:#fff; user-select:none; -webkit-user-select:none; touch-action:none; }
+  #wrap { position:fixed; inset:0; max-width:520px; margin:0 auto; }
+  canvas { display:block; width:100%; height:100%; }
+  #hud { position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:12px 14px; pointer-events:none; z-index:3; }
+  #scoreBox { font-size:40px; font-weight:800; text-shadow:0 3px 0 rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.4); }
+  #bestBox { font-size:13px; font-weight:700; background:rgba(0,0,0,.35); padding:6px 12px; border-radius:999px; }
+  #muteBtn { pointer-events:auto; background:rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.25); color:#fff; width:42px; height:42px; border-radius:50%; font-size:19px; cursor:pointer; }
+  #chips { position:absolute; top:64px; left:0; right:0; display:flex; justify-content:center; gap:8px; z-index:3; pointer-events:none; }
+  .chip { font-size:15px; font-weight:800; background:rgba(0,0,0,.4); padding:6px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.18); }
+  #centerMsg { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:4; pointer-events:none; text-align:center; padding:20px; }
+  #countNum { font-size:110px; font-weight:800; color:#f5c542; text-shadow:0 5px 0 #b97e00, 0 10px 30px rgba(0,0,0,.5); display:none; }
+  .panel { background:rgba(13,16,22,.92); border:1px solid rgba(255,255,255,.14); border-radius:22px; padding:26px 30px; pointer-events:auto; box-shadow:0 18px 50px rgba(0,0,0,.55); max-width:86%; }
+  .panel h1 { font-size:30px; margin-bottom:4px; }
+  .panel h1 span { color:#69b44c; }
+  .panel .sub { opacity:.75; font-size:14px; line-height:1.5; margin-bottom:14px; }
+  .panel .bigscore { font-size:52px; font-weight:800; color:#f5c542; line-height:1; }
+  .panel .bestline { font-size:14px; opacity:.8; margin:6px 0 16px; }
+  .btn { display:inline-block; border:none; cursor:pointer; font-weight:800; border-radius:14px; padding:14px 26px; font-size:17px; background:linear-gradient(135deg,#69b44c,#2b8a3e); color:#fff; box-shadow:0 5px 14px rgba(0,0,0,.35); }
+  .btn:active { transform:scale(.96); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div id="hud">
+    <div id="scoreBox">0</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div id="bestBox">🏆 0</div>
+      <button id="muteBtn" title="Sound on/off">🔊</button>
+    </div>
+  </div>
+  <div id="chips">
+    <div class="chip" id="fuelBox">⛽ 100%</div>
+    <div class="chip" id="distBox">📏 0 m</div>
+    <div class="chip" id="coinBox">🪙 ×0</div>
+  </div>
+  <div id="centerMsg">
+    <div id="countNum">3</div>
+    <div class="panel" id="startPanel">
+      <h1>🚜 Hill <span>Rider</span></h1>
+      <div class="sub">Hold the RIGHT side = GAS, LEFT side = brake / reverse.<br>In the air: gas flips you back, brake tips you forward.<br>Land wheels-first — roof landings crash! Grab red fuel cans!<br><span style="color:#ffd94d">The hills get steeper and the rocks are out — mind your head!</span></div>
+      <button class="btn" id="startBtn">▶ Play</button>
+    </div>
+    <div class="panel hidden" id="overPanel">
+      <h1 id="overTitle">Game Over</h1>
+      <div class="bigscore" id="finalScore">0</div>
+      <div class="bestline" id="finalBest">Best: 0</div>
+      <button class="btn" id="againBtn">↻ Ride Again</button>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+/* ============ Rupiyo score bridge ============ */
+var GAME_ID = 'hill-rider';
+try { GAME_ID = new URLSearchParams(location.search).get('rp_game') || GAME_ID; } catch (e) {}
+var scoreSent = false;
+function reportScore(s) {
+  if (scoreSent) return; scoreSent = true;
+  s = Math.max(0, Math.floor(s));
+  try { parent.postMessage({ type: 'rupiyo:score', game: GAME_ID, score: s }, '*'); } catch (e) {}
+  try { if (window.RupiyoBridge && window.RupiyoBridge.postScore) window.RupiyoBridge.postScore(s); } catch (e) {}
+}
+function rpAd(cb){ if(window.parent===window){ cb(); return; } let done=false; const fin=()=>{ if(done) return; done=true; window.removeEventListener('message',h); cb(); }; const h=e=>{ if(e.data && e.data.type==='rupiyo:ad-done') fin(); }; window.addEventListener('message',h); try{ parent.postMessage({type:'rupiyo:ad',kind:'interstitial'},'*'); }catch(_){ } setTimeout(fin,5000); }
+
+/* ============ Audio (all synthesized) ============ */
+var AC = null, muted = false;
+function ac() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(freq, dur, type, vol, slideTo, delay) {
+  if (muted) return; var c = ac(); if (!c) return;
+  var t0 = c.currentTime + (delay || 0);
+  var o = c.createOscillator(), g = c.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
+  g.gain.setValueAtTime(vol || 0.15, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(g); g.connect(c.destination);
+  o.start(t0); o.stop(t0 + dur + 0.02);
+}
+function noiseBurst(dur, vol, freq) {
+  if (muted) return; var c = ac(); if (!c) return;
+  var n = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+  for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  var src = c.createBufferSource(); src.buffer = buf;
+  var f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq || 1200; f.Q.value = 0.8;
+  var g = c.createGain(); g.gain.value = vol || 0.2;
+  src.connect(f); f.connect(g); g.connect(c.destination); src.start();
+}
+function sfxCoin() { tone(950, 0.07, 'square', 0.10); tone(1420, 0.14, 'square', 0.10, null, 0.06); }
+function sfxFuel() { tone(220, 0.1, 'sine', 0.13, 330); tone(330, 0.14, 'sine', 0.13, 520, 0.09); }
+function sfxFlip() { tone(523, 0.1, 'square', 0.1); tone(659, 0.1, 'square', 0.1, null, 0.09); tone(784, 0.1, 'square', 0.1, null, 0.18); tone(1047, 0.24, 'square', 0.11, null, 0.27); }
+function sfxCrash() { noiseBurst(0.42, 0.34, 240); tone(140, 0.45, 'sawtooth', 0.18, 36); }
+function sfxLand() { noiseBurst(0.07, 0.08, 300); }
+function sfxCount(final) { tone(final ? 880 : 440, final ? 0.22 : 0.12, 'sine', 0.14); }
+function sfxEnd() { tone(392, 0.16, 'sine', 0.12); tone(330, 0.16, 'sine', 0.12, null, 0.15); tone(262, 0.34, 'sine', 0.13, null, 0.3); }
+/* engine hum, pitch follows speed + throttle */
+var engOsc = null, engGain = null;
+function engineStart() {
+  if (engOsc) return; var c = ac(); if (!c) return;
+  try {
+    engOsc = c.createOscillator(); engGain = c.createGain();
+    var f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 280;
+    engOsc.type = 'sawtooth'; engOsc.frequency.value = 46; engGain.gain.value = 0;
+    engOsc.connect(f); f.connect(engGain); engGain.connect(c.destination); engOsc.start();
+  } catch (e) { engOsc = null; engGain = null; }
+}
+function engineSet(on, freq, vol) {
+  if (!engOsc || !engGain) return;
+  try { engGain.gain.value = (on && !muted) ? vol : 0; engOsc.frequency.value = freq; } catch (e) {}
+}
+function engineStop() { if (engOsc) { try { engOsc.stop(); } catch (e) {} engOsc = null; engGain = null; } }
+
+/* ============ Canvas setup ============ */
+var cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+var W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ============ Terrain (deterministic, endless) ============ */
+function terrain(x) {
+  var base = H * 0.60;
+  // difficulty ramp: 0 on the early hills, fully in by ~1500 m — the hills
+  // grow taller (amplitude up to ~x1.8 on the main swells) and a shorter,
+  // steeper wave fades in, so late terrain demands brake / air control
+  var ramp = Math.min(1, Math.max(0, (x - 4000) / 68000));
+  return base
+    + (62 + 36 * ramp) * Math.sin(x * 0.0038 + 1.7)
+    + (30 + 20 * ramp) * Math.sin(x * (0.0103 + 0.0015 * ramp) + 0.4)
+    + 11 * Math.sin(x * 0.027 + 2.9)
+    + ramp * 15 * Math.sin(x * 0.0165 + 0.9)
+    - Math.min(60, x * 0.004); // gentle overall climb so early hills stay tame
+}
+function slopeAt(x) { return (terrain(x + 3) - terrain(x - 3)) / 6; }
+/* Ground height for the WHEELS: the terrain with rock tops folded in, so a
+   wheel rests on top of a boulder and the vehicle drives over it instead of
+   wedging against its side. (Head-crash and drawing keep using terrain().) */
+function groundY(x) {
+  var y = terrain(x);
+  for (var i = 0; i < rockList.length; i++) {
+    var rk = rockList[i], dx = x - rk.x, W = rk.r * 1.7;
+    if (dx > -W && dx < W) {
+      // smooth cosine bump (~38 deg max face): a ray-cast suspension cannot
+      // climb a true circle's near-vertical side, so the boulder is folded
+      // into the ground as a steep-but-rideable hump (drawn squashed to fit)
+      var top = terrain(rk.x) - rk.r * 0.85 * (0.5 + 0.5 * Math.cos(Math.PI * dx / W));
+      if (top < y) y = top;
+    }
+  }
+  return y;
+}
+function groundSlope(x) { return (groundY(x + 3) - groundY(x - 3)) / 6; }
+
+/* ============ Game state ============ */
+var GRAV = 2100;                 // px/s^2 — proper Hill-Climb weight
+var WB = 38, WRAD = 23;          // half wheelbase, wheel radius (vehicle ~1.35x bigger than before)
+var MOUNT_Y = 2;                 // suspension mount offset below chassis centre
+var SUS_REST = 30, SUS_MIN = 10, SUS_MAX = 46; // suspension length: rest / bottomed-out / full droop
+var MASS = 80, INERT = 240000;   // chassis mass + rotational inertia
+var SPRING_K = 9000, SPRING_D = 820;
+var ENGINE_F = 100000, BRAKE_F = 90000, REV_F = 50000; // per-wheel tangential forces
+var AIR_TQ = 4.6;                // air rotation accel (rad/s^2)
+var HEAD_OFF = 46;               // driver head distance above chassis centre
+var VSCALE = WB / 28;            // art scale vs the original drawing coords
+var WHEELS = [];
+var state = 'ready'; // ready | count | play | over
+var countT = 0, lastCount = 4;
+var score = 0, best = 0;
+try { best = parseInt(localStorage.getItem('rp_best_' + GAME_ID) || '0', 10) || 0; } catch (e) {}
+var time = 0, shake = 0, overAt = 0;
+var veh, parts, pops, clouds;
+var camX, fuel, coinsGot, flipBonus, nextCoinX, nextCanX, coinList, canList;
+var rockList, nextRockX, rockHitFx;
+var gasHeld, brakeHeld, ptrGas, ptrBrake, wheelRot, airRot, wasAir, stallT, exhaustT, progressM, progressT;
+
+function reset() {
+  veh = { x: 140, y: 0, vx: 0, vy: 0, th: 0, va: 0, grounded: false };
+  veh.y = terrain(140) - (MOUNT_Y + 21 + WRAD) - 2;
+  WHEELS = [
+    { s: 21, prev: 21, prevF: 21, cx: 0, cy: 0, mx: 0, my: 0, contact: false },
+    { s: 21, prev: 21, prevF: 21, cx: 0, cy: 0, mx: 0, my: 0, contact: false }
+  ];
+  updateWheelGeom();
+  parts = []; pops = []; clouds = [];
+  for (var i = 0; i < 6; i++) clouds.push({ x: Math.random() * 1500, y: 30 + Math.random() * H * 0.22, s: 0.6 + Math.random() * 0.9 });
+  camX = 0; fuel = 100; coinsGot = 0; flipBonus = 0;
+  coinList = []; canList = []; rockList = [];
+  nextCoinX = 430; nextCanX = 950; nextRockX = 140 + 155 * 48; rockHitFx = 0;
+  gasHeld = false; brakeHeld = false; ptrGas = null; ptrBrake = null;
+  wheelRot = 0; airRot = 0; wasAir = false; stallT = 0; exhaustT = 0; progressM = 0; progressT = 0;
+  score = 0; scoreSent = false;
+  updateHud();
+}
+function metres() { return Math.max(0, Math.floor((veh.x - 140) / 48)); }
+function camTarget() { return veh.x - W * 0.36 + Math.max(-30, Math.min(120, veh.vx * 0.4)); }
+function computeScore() { return metres() + coinsGot + flipBonus; }
+function updateHud() {
+  score = computeScore();
+  document.getElementById('scoreBox').textContent = score;
+  document.getElementById('bestBox').textContent = '🏆 ' + Math.max(best, score);
+  var fb = document.getElementById('fuelBox');
+  fb.textContent = '⛽ ' + Math.max(0, Math.ceil(fuel)) + '%';
+  fb.style.color = fuel < 25 ? '#ff8787' : '';
+  fb.style.borderColor = fuel < 25 ? 'rgba(255,120,120,.7)' : '';
+  document.getElementById('distBox').textContent = '📏 ' + metres() + ' m';
+  document.getElementById('coinBox').textContent = '🪙 ×' + coinsGot;
+}
+function burst(x, y, n, colors, spd) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random() * Math.PI * 2, v = (0.3 + Math.random() * 0.7) * (spd || 260);
+    parts.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: 0.55 + Math.random() * 0.4, t: 0, c: colors[i % colors.length], r: 2.5 + Math.random() * 3.5 });
+  }
+}
+function popup(x, y, txt, color) { pops.push({ x: x, y: y, txt: txt, t: 0, c: color || '#ffd94d' }); }
+function startCountdown() {
+  reset();
+  state = 'count'; countT = 0; lastCount = 4;
+  document.getElementById('startPanel').classList.add('hidden');
+  document.getElementById('overPanel').classList.add('hidden');
+  document.getElementById('countNum').style.display = 'block';
+  ac(); engineStart();
+}
+function gameOver(reason) {
+  if (state === 'over') return;
+  state = 'over'; overAt = time;
+  shake = 15;
+  burst(veh.x - camX, veh.y, 30, ['#ff922b', '#ff5d5d', '#ffd94d', '#ffffff'], 330);
+  engineStop();
+  if (reason === 'fuel') sfxEnd(); else sfxCrash();
+  score = computeScore();
+  if (score > best) { best = score; try { localStorage.setItem('rp_best_' + GAME_ID, String(best)); } catch (e) {} }
+  reportScore(score);
+  document.getElementById('overTitle').textContent = reason === 'fuel' ? '⛽ Out of Fuel!' : '💥 Crashed!';
+  document.getElementById('finalScore').textContent = score;
+  document.getElementById('finalBest').textContent = 'Best: ' + best + ' · ' + metres() + ' m driven';
+  setTimeout(function () { document.getElementById('overPanel').classList.remove('hidden'); }, 450);
+  updateHud();
+}
+
+/* ============ Physics: two-wheel spring suspension (fixed substeps) ============ */
+function mountPos(sign) {
+  var ex = Math.cos(veh.th), ey = Math.sin(veh.th);
+  var dx = -Math.sin(veh.th), dy = Math.cos(veh.th); // body-down direction
+  return { x: veh.x + ex * WB * sign + dx * MOUNT_Y, y: veh.y + ey * WB * sign + dy * MOUNT_Y, dx: dx, dy: dy };
+}
+function updateWheelGeom() {
+  for (var i = 0; i < 2; i++) {
+    var M = mountPos(i === 0 ? -1 : 1), w = WHEELS[i];
+    w.mx = M.x; w.my = M.y;
+    w.cx = M.x + M.dx * w.s; w.cy = M.y + M.dy * w.s;
+  }
+}
+function headPos() {
+  // EXACTLY where the helmet is drawn in drawVehicle(): art coords centre
+  // (-4,-32), radius 8, scaled by VSCALE — i.e. ~43 px up and ~5 px BEHIND
+  // the chassis centre, with the helmet's real radius. The crash test must
+  // use the drawn position, not an idealised point straight above centre.
+  var fx = Math.cos(veh.th), fy = Math.sin(veh.th);   // body forward
+  var ux = Math.sin(veh.th), uy = -Math.cos(veh.th);  // body up
+  return {
+    x: veh.x + fx * (-4 * VSCALE) + ux * (32 * VSCALE),
+    y: veh.y + fy * (-4 * VSCALE) + uy * (32 * VSCALE),
+    r: 8 * VSCALE
+  };
+}
+function physStep(sdt) {
+  var i, sign, M, w;
+  var ex = Math.cos(veh.th), ey = Math.sin(veh.th);
+  veh.vy += GRAV * sdt;
+  var anyContact = false, bothContact = true;
+
+  for (i = 0; i < 2; i++) {
+    sign = i === 0 ? -1 : 1;
+    w = WHEELS[i];
+    M = mountPos(sign);
+    w.mx = M.x; w.my = M.y;
+    // Solve the wheel-centre distance along body-down where the wheel rests on
+    // the terrain (Newton iterations on penetration, warm-started from last step).
+    var s = w.s, pen = -1, deriv = 1, cx = M.x, cy = M.y, it;
+    for (it = 0; it < 3; it++) {
+      cx = M.x + M.dx * s; cy = M.y + M.dy * s;
+      pen = (cy + WRAD) - groundY(cx);
+      deriv = M.dy - groundSlope(cx) * M.dx;
+      if (deriv > -0.25 && deriv < 0.25) deriv = deriv < 0 ? -0.25 : 0.25;
+      if (Math.abs(pen) < 0.05) break;
+      s -= pen / deriv;
+      if (s < SUS_MIN - 8) s = SUS_MIN - 8;
+      if (s > SUS_MAX + 10) s = SUS_MAX + 10;
+    }
+    cx = M.x + M.dx * s; cy = M.y + M.dy * s;
+    pen = (cy + WRAD) - groundY(cx);
+    var contact = pen > -1.5 && s <= SUS_MAX + 0.5 && M.dy > -0.2;
+    w.contact = contact;
+    if (contact) {
+      anyContact = true;
+      var sc = Math.max(SUS_MIN, Math.min(SUS_MAX, s));
+      w.s = sc; w.prev = sc;
+      var rx0 = M.x - veh.x, ry0 = M.y - veh.y;
+      // damping from the mount's velocity along body-down (smooth — velocities
+      // are continuous, unlike the solved length, which jumps on crests)
+      var vmdn = (veh.vx - veh.va * ry0) * M.dx + (veh.vy + veh.va * rx0) * M.dy;
+      var rate = (sc - w.prevF) / sdt; // solved-length rate, clamped so crest snaps can't spike it
+      if (rate > 220) rate = 220; if (rate < -220) rate = -220;
+      w.prevF = sc;
+      var F = SPRING_K * (SUS_REST - sc) + SPRING_D * vmdn - 110 * rate;
+      if (F < 0) F = 0; if (F > 300000) F = 300000;
+      w.cx = M.x + M.dx * sc; w.cy = M.y + M.dy * sc;
+      // spring pushes the chassis away from the ground along -body-down, at the mount (=> torque)
+      var fx = -M.dx * F, fy = -M.dy * F;
+      veh.vx += fx / MASS * sdt; veh.vy += fy / MASS * sdt;
+      var rx = M.x - veh.x, ry = M.y - veh.y;
+      veh.va += (rx * fy - ry * fx) / INERT * sdt;
+      // drive / brake: tangential force through this wheel while it grips
+      var sl = groundSlope(w.cx), tl = Math.sqrt(1 + sl * sl), tx = 1 / tl, ty = sl / tl;
+      var df = 0;
+      if (gasHeld && fuel > 0) df += ENGINE_F;
+      if (brakeHeld) {
+        var vt = veh.vx * tx + veh.vy * ty;
+        if (vt > 25) df -= BRAKE_F;        // moving forward: brake
+        else if (vt < -25) df += BRAKE_F;  // moving backward: brake
+        else df -= REV_F;                  // standing still: reverse
+      }
+      if (df !== 0) {
+        // traction scales with how loaded this wheel is — a drooping,
+        // near-unloaded wheel can't drive
+        df *= Math.max(0, Math.min(1, F / 60000));
+        var dfx = tx * df, dfy = ty * df;
+        veh.vx += dfx / MASS * sdt; veh.vy += dfy / MASS * sdt;
+        // The drive force is applied part-way down the strut toward the
+        // wheel, NOT at the mount: applied at the mount (2 px below the
+        // centre) it produced almost no pitch moment, so the vehicle could
+        // never wheelie or loop under power. The real lever arm makes full
+        // gas pitch the chassis back honestly — hold it too long on a climb
+        // and you go over, exactly like a real hill-climb bike.
+        var apx = M.x + M.dx * sc * 0.45 - veh.x, apy = M.y + M.dy * sc * 0.45 - veh.y;
+        veh.va += (apx * dfy - apy * dfx) / INERT * sdt;
+      }
+    } else {
+      bothContact = false;
+      // no ground in reach: the wheel droops toward full extension
+      w.s += (SUS_MAX - w.s) * Math.min(1, sdt * 9);
+      w.prev = w.s;
+      w.cx = M.x + M.dx * w.s; w.cy = M.y + M.dy * w.s;
+    }
+  }
+  veh.grounded = anyContact;
+
+  // air control (classic HCR): gas rotates back, brake rotates forward
+  if (!anyContact) {
+    if (gasHeld) veh.va -= AIR_TQ * sdt;
+    if (brakeHeld) veh.va += AIR_TQ * sdt;
+    veh.va *= (1 - 0.30 * sdt);
+  } else {
+    veh.va *= (1 - 0.65 * sdt); // grounded angular damping from the tyres (kept well below the old 1.1: too much acts like a self-levelling helper and the vehicle can never flip)
+    if (gasHeld && fuel > 0) veh.va -= 0.35 * sdt; // slight wheelie reaction
+  }
+  if (veh.va > 6) veh.va = 6; if (veh.va < -6) veh.va = -6;
+  // mild drag + top speed
+  veh.vx *= (1 - 0.10 * sdt); veh.vy *= (1 - 0.02 * sdt);
+  var sp = Math.sqrt(veh.vx * veh.vx + veh.vy * veh.vy);
+  if (sp > 1150) { veh.vx *= 1150 / sp; veh.vy *= 1150 / sp; }
+
+  // integrate
+  veh.x += veh.vx * sdt;
+  veh.y += veh.vy * sdt;
+  veh.th += veh.va * sdt;
+  while (veh.th > Math.PI) veh.th -= Math.PI * 2;
+  while (veh.th < -Math.PI) veh.th += Math.PI * 2;
+
+  // Hard backstop: only if the chassis is so low that a wheel would be under
+  // the terrain even with the suspension FULLY bottomed (s = SUS_MIN) — e.g.
+  // after a huge landing — push it out along the surface normal. (Checking at
+  // the current suspension length instead would act like a rigid strut and
+  // make the vehicle hover on its droop length.)
+  for (var bp = 0; bp < 2; bp++) {
+    for (i = 0; i < 2; i++) {
+      M = mountPos(i === 0 ? -1 : 1);
+      w = WHEELS[i];
+      var bx = M.x + M.dx * SUS_MIN, by = M.y + M.dy * SUS_MIN;
+      var bpen = (by + WRAD) - groundY(bx);
+      if (bpen > 0) {
+        var bsl = groundSlope(bx), bnl = Math.sqrt(bsl * bsl + 1);
+        var bnx = bsl / bnl, bny = -1 / bnl;
+        veh.x += bnx * bpen; veh.y += bny * bpen;
+        var bvn = veh.vx * bnx + veh.vy * bny;
+        if (bvn < 0) { veh.vx -= bvn * bnx; veh.vy -= bvn * bny; }
+      }
+    }
+  }
+  // Rocks: circle obstacles for the wheels. A slow touch just bumps the
+  // wheel over; a fast hit shoves the chassis and kicks its rotation.
+  for (var ri = 0; ri < rockList.length; ri++) {
+    var rk = rockList[ri];
+    if (rk.x < veh.x - 220 || rk.x > veh.x + 220) continue;
+    var rcx = rk.x, rcy = terrain(rk.x) - rk.r * 0.45;
+    for (i = 0; i < 2; i++) {
+      w = WHEELS[i];
+      if (w.contact) continue; // grounded wheels ride over via groundY;
+                               // this resolver is for airborne strikes only
+      var rdx = w.cx - rcx, rdy = w.cy - rcy;
+      var rd = Math.sqrt(rdx * rdx + rdy * rdy), minD = WRAD + rk.r * 0.78;
+      if (rd >= minD + 8) rk.hit = false; // separated again: next strike counts fresh
+      if (rd < minD && rd > 0.01) {
+        var rnx = rdx / rd, rny = rdy / rd, push = (minD - rd) * 0.5;
+        // partial push-out only: the wheel rides UP and over the boulder
+        // instead of hitting a wall (full resolution face-planted the
+        // vehicle on every touch)
+        veh.x += rnx * push; veh.y += rny * push;
+        var rvn = veh.vx * rnx + veh.vy * rny;
+        if (rvn < 0) {
+          veh.vx -= rvn * rnx * 1.1; veh.vy -= rvn * rny * 1.1;
+          if (!rk.hit) {
+            // one angular kick per strike, sized like a real impulse
+            rk.hit = true;
+            var krx = w.cx - veh.x, kry = w.cy - veh.y;
+            veh.va += (krx * rny - kry * rnx) * (-rvn) * 0.00012;
+            if (veh.va > 7) veh.va = 7; if (veh.va < -7) veh.va = -7;
+            if (-rvn > rockHitFx) rockHitFx = -rvn;
+          }
+        }
+      }
+    }
+  }
+  updateWheelGeom();
+
+  // air rotation tracking for the landed-backflip bonus
+  if (!anyContact) { airRot += veh.va * sdt; }
+  else {
+    if (wasAir) {
+      var slopeAng = Math.atan(slopeAt(veh.x));
+      var dAng = veh.th - slopeAng;
+      while (dAng > Math.PI) dAng -= Math.PI * 2;
+      while (dAng < -Math.PI) dAng += Math.PI * 2;
+      if (Math.abs(airRot) >= 5.76 && Math.abs(dAng) < 0.9) { // >= 330 deg and landed wheels-down
+        flipBonus += 5;
+        popup(veh.x - camX, veh.y - 80, 'BACKFLIP! +5 🤸', '#5effd4');
+        burst(veh.x - camX, veh.y - 24, 20, ['#5effd4', '#ffd94d', '#ffffff'], 260);
+        sfxFlip(); updateHud();
+      } else {
+        sfxLand();
+      }
+    }
+    airRot = 0;
+  }
+  wasAir = !anyContact;
+  wheelRot += ((veh.vx * ex + veh.vy * ey) / WRAD) * sdt;
+}
+
+/* ============ Update ============ */
+function update(dt) {
+  time += dt;
+  var i, p;
+  for (i = parts.length - 1; i >= 0; i--) { p = parts[i]; p.t += dt; p.vy += 640 * dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.t > p.life) parts.splice(i, 1); }
+  for (i = pops.length - 1; i >= 0; i--) { pops[i].t += dt; pops[i].y -= 44 * dt; if (pops[i].t > 0.95) pops.splice(i, 1); }
+  if (shake > 0) shake = Math.max(0, shake - dt * 30);
+  engineSet(state === 'play', 44 + Math.abs(veh.vx) * 0.11 + (gasHeld ? 14 : 0), gasHeld ? 0.034 : 0.024);
+
+  if (state === 'count') {
+    countT += dt;
+    var n = 3 - Math.floor(countT);
+    if (n !== lastCount && n >= 1) { lastCount = n; sfxCount(false); var el = document.getElementById('countNum'); el.textContent = n; el.style.transform = 'scale(1.25)'; setTimeout(function () { el.style.transform = 'scale(1)'; }, 90); }
+    if (countT >= 3) { state = 'play'; document.getElementById('countNum').style.display = 'none'; sfxCount(true); }
+    camX = camTarget();
+    return;
+  }
+  if (state !== 'play') { camX = camTarget(); return; }
+
+  // fixed-step physics (substeps of ~1/240 s — keeps the stiff springs stable)
+  var steps = Math.max(1, Math.min(16, Math.ceil(dt / (1 / 240))));
+  var sdt = dt / steps;
+  for (i = 0; i < steps; i++) physStep(sdt);
+
+  // camera follows smoothly, looking ahead with speed
+  camX += (camTarget() - camX) * Math.min(1, dt * 7);
+
+  // fuel — the drain multiplier grows +15% every 250 m (cap x2.2), so the
+  // tank genuinely runs dry on long runs even with careful driving
+  var fmult = Math.min(2.2, 1 + 0.15 * Math.floor(metres() / 250));
+  fuel -= dt * (1.5 + (gasHeld ? 1.05 : 0)) * fmult;
+  if (fuel < 0) fuel = 0;
+  if (fuel <= 0 && Math.abs(veh.vx) < 40 && Math.abs(veh.vy) < 40) {
+    // no grounded requirement: a vehicle wedged/stranded on empty must
+    // still end (it previously could sit on a rock forever)
+    stallT += dt;
+    if (stallT > 1.0) { gameOver('fuel'); return; }
+  } else stallT = 0;
+  // absolute backstop: on an empty tank, 6 s without gaining 2 m ends the
+  // run — sloshing in a valley or rocking against a rock cannot soft-lock
+  if (metres() >= progressM + 2) { progressM = metres(); progressT = 0; }
+  else if (fuel <= 0) {
+    progressT += dt;
+    if (progressT > 6) { gameOver('fuel'); return; }
+  } else progressT = 0;
+
+  // rock hit feedback (set inside physStep)
+  if (rockHitFx > 240) {
+    shake = Math.min(14, rockHitFx / 26);
+    noiseBurst(0.15, 0.22, 480);
+    popup(veh.x - camX, veh.y - 74, '🪨 ROCK!', '#ced4da');
+  }
+  rockHitFx = 0;
+
+  // crash: the drawn helmet touches the ground
+  var hp = headPos();
+  if (hp.y + hp.r > terrain(hp.x)) { gameOver('crash'); return; }
+  // crash: chassis rolled past ~140 deg while in contact
+  if (veh.grounded && Math.abs(veh.th) > 2.44) { gameOver('crash'); return; }
+  // crash: helmet or chassis slammed into a rock
+  for (i = 0; i < rockList.length; i++) {
+    var rk2 = rockList[i];
+    if (rk2.x < veh.x - 220 || rk2.x > veh.x + 220) continue;
+    var rcx2 = rk2.x, rcy2 = terrain(rk2.x) - rk2.r * 0.45;
+    var hdx = hp.x - rcx2, hdy = hp.y - rcy2;
+    if (hdx * hdx + hdy * hdy < Math.pow(hp.r + rk2.r * 0.78, 2)) { gameOver('crash'); return; }
+    var bdx = veh.x - rcx2, bdy = veh.y - rcy2;
+    if (bdx * bdx + bdy * bdy < Math.pow(rk2.r * 0.78 + 14, 2)) { gameOver('crash'); return; }
+  }
+
+  // spawn pickups ahead
+  while (nextCoinX < camX + W + 500) {
+    var grp = 3 + Math.floor(Math.random() * 3);
+    for (i = 0; i < grp; i++) {
+      var cxx = nextCoinX + i * 36;
+      coinList.push({ x: cxx, y: terrain(cxx) - 46, r: 13, taken: false });
+    }
+    nextCoinX += grp * 36 + 300 + Math.random() * 320;
+  }
+  while (nextCanX < camX + W + 500) {
+    canList.push({ x: nextCanX, y: terrain(nextCanX) - 15, taken: false });
+    // cans get rarer with distance: spacing grows from ~230 m toward ~320 m
+    var canGapM = 230 + 90 * Math.min(1, metres() / 1500);
+    nextCanX += canGapM * 48 + Math.random() * 240;
+  }
+  while (nextRockX < camX + W + 500) {
+    var rkx = nextRockX, rtries = 0;
+    // place rocks on crests/flats, not on steep faces or landing slopes
+    while (rtries < 4 && Math.abs(slopeAt(rkx)) > 0.42) { rkx += 130; rtries++; }
+    if (Math.abs(slopeAt(rkx)) <= 0.55) {
+      rockList.push({ x: rkx, r: 15 + Math.random() * 11, seed: Math.random() * 10 });
+    }
+    var dens = Math.min(1, Math.max(0, (rkx - 7000) / 65000));
+    nextRockX = rkx + (1630 - 670 * dens) + Math.random() * 300; // ~34 m apart early, ~20 m by 1500 m
+  }
+  while (coinList.length && coinList[0].x < camX - 140) coinList.shift();
+  while (canList.length && canList[0].x < camX - 140) canList.shift();
+  while (rockList.length && rockList[0].x < camX - 200) rockList.shift();
+
+  // pickups
+  for (i = coinList.length - 1; i >= 0; i--) {
+    var cn = coinList[i];
+    var dx = cn.x - veh.x, dy = cn.y - veh.y;
+    if (dx * dx + dy * dy < 52 * 52) {
+      coinList.splice(i, 1); coinsGot++;
+      popup(cn.x - camX, cn.y - 24, '+1 🪙');
+      burst(cn.x - camX, cn.y, 7, ['#ffd94d', '#fff3b0'], 140);
+      sfxCoin(); updateHud();
+    }
+  }
+  for (i = canList.length - 1; i >= 0; i--) {
+    var fc = canList[i];
+    var fdx = fc.x - veh.x, fdy = fc.y - veh.y;
+    if (fdx * fdx + fdy * fdy < 56 * 56) {
+      canList.splice(i, 1);
+      fuel = Math.min(100, fuel + 42);
+      popup(fc.x - camX, fc.y - 34, '⛽ +FUEL', '#ff8787');
+      burst(fc.x - camX, fc.y, 10, ['#ff6b6b', '#ffa8a8'], 160);
+      sfxFuel(); updateHud();
+    }
+  }
+  // exhaust puffs while gassing
+  exhaustT -= dt;
+  if (gasHeld && veh.grounded && exhaustT <= 0) {
+    exhaustT = 0.08;
+    parts.push({ x: WHEELS[0].cx - camX - 8, y: WHEELS[0].cy - 10, vx: -50 - Math.random() * 30, vy: -22 - Math.random() * 18, life: 0.4, t: 0, c: 'rgba(220,225,235,.5)', r: 3 + Math.random() * 3 });
+  }
+  if (Math.floor(time * 4) !== Math.floor((time - dt) * 4)) updateHud();
+}
+
+/* ============ Draw ============ */
+function drawCoinShape(x, y, r, t) {
+  var sq = Math.abs(Math.cos(t * 4.5));
+  ctx.save(); ctx.translate(x, y); ctx.scale(0.35 + 0.65 * sq, 1);
+  var g = ctx.createRadialGradient(-3, -4, 2, 0, 0, r);
+  g.addColorStop(0, '#fff3b0'); g.addColorStop(0.6, '#f5c542'); g.addColorStop(1, '#d99400');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#a86e00'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#a86e00'; ctx.font = '800 ' + Math.round(r * 1.05) + 'px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('₹', 0, 1);
+  ctx.restore();
+}
+function drawCloud(x, y, s) {
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  ctx.beginPath();
+  ctx.arc(x, y, 20 * s, 0, 7); ctx.arc(x + 22 * s, y + 4 * s, 15 * s, 0, 7); ctx.arc(x - 22 * s, y + 5 * s, 13 * s, 0, 7); ctx.arc(x + 2 * s, y + 8 * s, 16 * s, 0, 7);
+  ctx.fill();
+}
+function drawWheelAt(x, y, r) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(wheelRot);
+  ctx.fillStyle = '#20242c'; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#454e5c'; ctx.lineWidth = 3;
+  for (var i = 0; i < 4; i++) { ctx.save(); ctx.rotate(i * Math.PI / 4 + 0.4); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(r - 2.5, 0); ctx.stroke(); ctx.restore(); }
+  ctx.fillStyle = '#ced4da'; ctx.beginPath(); ctx.arc(0, 0, r * 0.34, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function drawVehicle() {
+  var x = veh.x - camX, y = veh.y;
+  var wb = WHEELS[0], wf = WHEELS[1];
+  // suspension struts from mounts to wheel centres
+  ctx.strokeStyle = '#343a40'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(wb.mx - camX, wb.my); ctx.lineTo(wb.cx - camX, wb.cy);
+  ctx.moveTo(wf.mx - camX, wf.my); ctx.lineTo(wf.cx - camX, wf.cy);
+  ctx.stroke();
+  // wheels (behind body), at their simulated positions
+  drawWheelAt(wb.cx - camX, wb.cy, WRAD);
+  drawWheelAt(wf.cx - camX, wf.cy, WRAD);
+  ctx.save(); ctx.translate(x, y); ctx.rotate(veh.th); ctx.scale(VSCALE, VSCALE);
+  // chassis
+  var g = ctx.createLinearGradient(0, -18, 0, 10);
+  g.addColorStop(0, '#ffa94d'); g.addColorStop(1, '#e8590c');
+  ctx.fillStyle = g;
+  rr(-31, -14, 62, 15, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(90,40,0,.5)'; ctx.lineWidth = 2; rr(-31, -14, 62, 15, 6); ctx.stroke();
+  // hood + seat block (tractor)
+  ctx.fillStyle = '#f08c00';
+  rr(8, -24, 22, 12, 4); ctx.fill();
+  ctx.fillStyle = '#845ef7';
+  rr(-24, -25, 17, 13, 4); ctx.fill();
+  // exhaust stack
+  ctx.fillStyle = '#495057'; ctx.fillRect(24, -33, 4.5, 11);
+  // fenders (art coords: wheel centres sit at (+/-28, 12) before the VSCALE)
+  ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 4.5;
+  ctx.beginPath(); ctx.arc(-28, 12, 21.5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+  ctx.beginPath(); ctx.arc(28, 12, 19.5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+  // driver
+  ctx.strokeStyle = '#1864ab'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-14, -12); ctx.lineTo(-6, -26); ctx.stroke(); // torso leaning
+  ctx.beginPath(); ctx.moveTo(-6, -24); ctx.lineTo(8, -16); ctx.stroke();  // arm to wheel/controls
+  ctx.beginPath(); ctx.moveTo(-14, -12); ctx.lineTo(-4, -2); ctx.stroke();  // leg
+  ctx.fillStyle = '#ffd60a'; // helmet
+  ctx.beginPath(); ctx.arc(-4, -32, 8, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(30,30,40,.85)';
+  ctx.fillRect(-4, -34.5, 8, 3.6); // visor
+  ctx.restore();
+}
+function drawPedals() {
+  if (state !== 'play') return;
+  ctx.save();
+  // brake (left)
+  ctx.fillStyle = brakeHeld ? 'rgba(255,80,80,.34)' : 'rgba(255,80,80,.14)';
+  rr(10, H - 74, 104, 56, 16); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,120,120,.5)'; ctx.lineWidth = 2; rr(10, H - 74, 104, 56, 16); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = '800 15px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('🛑 BRAKE', 62, H - 46);
+  // gas (right)
+  ctx.fillStyle = gasHeld ? 'rgba(80,255,140,.34)' : 'rgba(80,255,140,.14)';
+  rr(W - 114, H - 74, 104, 56, 16); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,255,160,.5)'; rr(W - 114, H - 74, 104, 56, 16); ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.fillText('⛽ GAS', W - 62, H - 46);
+  ctx.restore();
+}
+function draw() {
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  var i, x;
+  // sky
+  var sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#4dabf7'); sky.addColorStop(0.6, '#a5d8ff'); sky.addColorStop(1, '#e7f5ff');
+  ctx.fillStyle = sky; ctx.fillRect(-20, -20, W + 40, H + 40);
+  // sun + clouds
+  ctx.fillStyle = '#fff3bf'; ctx.beginPath(); ctx.arc(W - 58, 64, 26, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,243,191,.35)'; ctx.beginPath(); ctx.arc(W - 58, 64, 40, 0, 7); ctx.fill();
+  for (i = 0; i < clouds.length; i++) {
+    var cl = clouds[i];
+    var cxp = ((cl.x - camX * 0.22) % (W + 240) + W + 240) % (W + 240) - 120;
+    drawCloud(cxp, cl.y, cl.s);
+  }
+  // distant hills (parallax 0.45)
+  ctx.fillStyle = '#95d38a';
+  ctx.beginPath(); ctx.moveTo(-20, H);
+  for (x = -20; x <= W + 20; x += 8) ctx.lineTo(x, H * 0.60 - 40 - Math.sin((x + camX * 0.45) * 0.012) * 24 - Math.sin((x + camX * 0.45) * 0.0045) * 15);
+  ctx.lineTo(W + 20, H); ctx.closePath(); ctx.fill();
+  // terrain body
+  var tg = ctx.createLinearGradient(0, H * 0.4, 0, H);
+  tg.addColorStop(0, '#b08954'); tg.addColorStop(0.35, '#8a5a33'); tg.addColorStop(1, '#54371d');
+  ctx.fillStyle = tg;
+  ctx.beginPath();
+  ctx.moveTo(-20, H + 20);
+  for (x = -20; x <= W + 20; x += 7) ctx.lineTo(x, terrain(camX + x));
+  ctx.lineTo(W + 20, H + 20); ctx.closePath(); ctx.fill();
+  // grass cap
+  ctx.strokeStyle = '#69b44c'; ctx.lineWidth = 9; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (x = -20; x <= W + 20; x += 7) { var ty = terrain(camX + x); if (x === -20) ctx.moveTo(x, ty); else ctx.lineTo(x, ty); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (x = -20; x <= W + 20; x += 7) { var ty2 = terrain(camX + x) - 4; if (x === -20) ctx.moveTo(x, ty2); else ctx.lineTo(x, ty2); }
+  ctx.stroke();
+  // rocks (jagged boulders sitting on the surface)
+  for (i = 0; i < rockList.length; i++) {
+    var rk3 = rockList[i], rkx3 = rk3.x - camX;
+    if (rkx3 < -50 || rkx3 > W + 50) continue;
+    var rcy3 = terrain(rk3.x) - rk3.r * 0.45;
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(rkx3, terrain(rk3.x) + 3, rk3.r * 1.05, 5, 0, 0, 7); ctx.fill();
+    ctx.beginPath();
+    for (var rp = 0; rp < 8; rp++) {
+      var ra = rp / 8 * Math.PI * 2, rj = 0.82 + 0.28 * Math.abs(Math.sin(rk3.seed * 7 + rp * 2.39));
+      var rpx = rkx3 + Math.cos(ra) * rk3.r * rj, rpy = rcy3 + Math.sin(ra) * rk3.r * rj * 0.85;
+      if (rp === 0) ctx.moveTo(rpx, rpy); else ctx.lineTo(rpx, rpy);
+    }
+    ctx.closePath();
+    var rg = ctx.createLinearGradient(rkx3, rcy3 - rk3.r, rkx3, rcy3 + rk3.r);
+    rg.addColorStop(0, '#a8b0ba'); rg.addColorStop(1, '#596066');
+    ctx.fillStyle = rg; ctx.fill();
+    ctx.strokeStyle = '#34383d'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(rkx3 - rk3.r * 0.5, rcy3 - rk3.r * 0.35); ctx.lineTo(rkx3 - rk3.r * 0.05, rcy3 - rk3.r * 0.72); ctx.lineTo(rkx3 + rk3.r * 0.3, rcy3 - rk3.r * 0.3); ctx.stroke();
+  }
+  // fuel cans
+  for (i = 0; i < canList.length; i++) {
+    var fc = canList[i], fx = fc.x - camX;
+    if (fx < -40 || fx > W + 40) continue;
+    var bob = Math.sin(time * 3 + fc.x) * 2;
+    ctx.save(); ctx.translate(fx, fc.y + bob);
+    ctx.fillStyle = '#e03131'; rr(-11, -13, 22, 26, 4); ctx.fill();
+    ctx.strokeStyle = '#7a1010'; ctx.lineWidth = 2; rr(-11, -13, 22, 26, 4); ctx.stroke();
+    ctx.fillStyle = '#7a1010'; ctx.fillRect(3, -18, 7, 6);
+    ctx.strokeStyle = '#ffd9d9'; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(-6, -7); ctx.lineTo(6, 7); ctx.moveTo(6, -7); ctx.lineTo(-6, 7); ctx.stroke();
+    ctx.restore();
+  }
+  // coins
+  for (i = 0; i < coinList.length; i++) {
+    var cn = coinList[i], cnx = cn.x - camX;
+    if (cnx < -30 || cnx > W + 30) continue;
+    drawCoinShape(cnx, cn.y + Math.sin(time * 3 + cn.x * 0.02) * 2.5, cn.r, time + cn.x * 0.01);
+  }
+  // low-fuel warning arrow to next can
+  if (state === 'play' && fuel < 30 && canList.length) {
+    var nc = canList[0];
+    if (nc.x - camX > W - 60) {
+      ctx.fillStyle = 'rgba(255,60,60,.9)';
+      ctx.font = '800 24px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('⛽➜', W - 34, H * 0.4 + Math.sin(time * 6) * 5);
+    }
+  }
+  // vehicle
+  if (state !== 'over') drawVehicle();
+  // particles (screen space)
+  for (i = 0; i < parts.length; i++) { var q = parts[i]; ctx.globalAlpha = Math.max(0, 1 - q.t / q.life); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 7); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  // popups (screen space)
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (i = 0; i < pops.length; i++) { var pp = pops[i]; ctx.globalAlpha = 1 - pp.t / 0.95; ctx.font = '800 21px system-ui, sans-serif'; ctx.fillStyle = pp.c; ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 4; ctx.strokeText(pp.txt, pp.x, pp.y); ctx.fillText(pp.txt, pp.x, pp.y); }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  drawPedals();
+}
+
+/* ============ Loop ============ */
+var lastT = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!lastT) lastT = ts;
+  var dt = (ts - lastT) / 1000; lastT = ts;
+  if (dt > 0.05) dt = 0.05;
+  if (!document.hidden) { update(dt); draw(); }
+}
+
+/* ============ Input (multi-touch pedals) ============ */
+function ptrPos(e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+cv.addEventListener('pointerdown', function (e) {
+  e.preventDefault(); ac();
+  if (state === 'over' && time - overAt > 0.7) { rpAd(function () { startCountdown(); }); return; }
+  if (state !== 'play') return;
+  var p = ptrPos(e);
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+  if (p.x < W / 2) { ptrBrake = e.pointerId; brakeHeld = true; }
+  else { ptrGas = e.pointerId; gasHeld = true; }
+});
+function releasePtr(e) {
+  if (e.pointerId === ptrGas) { ptrGas = null; gasHeld = false; }
+  if (e.pointerId === ptrBrake) { ptrBrake = null; brakeHeld = false; }
+}
+cv.addEventListener('pointerup', releasePtr);
+cv.addEventListener('pointercancel', releasePtr);
+document.getElementById('startBtn').addEventListener('click', function (e) { e.stopPropagation(); startCountdown(); });
+document.getElementById('againBtn').addEventListener('click', function (e) { e.stopPropagation(); rpAd(function () { startCountdown(); }); });
+document.getElementById('muteBtn').addEventListener('click', function (e) {
+  e.stopPropagation(); muted = !muted; this.textContent = muted ? '🔇' : '🔊'; if (!muted) ac();
+});
+window.addEventListener('keydown', function (e) {
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') gasHeld = true;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') brakeHeld = true;
+  if (e.code === 'Space') { e.preventDefault(); ac(); if (state === 'ready') startCountdown(); else if (state === 'over' && time - overAt > 0.7) rpAd(function () { startCountdown(); }); }
+});
+window.addEventListener('keyup', function (e) {
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') gasHeld = false;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') brakeHeld = false;
+});
+document.addEventListener('visibilitychange', function () {
+  lastT = 0;
+  if (document.hidden) { gasHeld = false; brakeHeld = false; ptrGas = null; ptrBrake = null; }
+});
+
+resize(); reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
