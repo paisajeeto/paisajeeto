@@ -639,6 +639,19 @@ var mode = 'campaign'; // campaign | mix
 var curLevel = 1;
 function saveCampaign() { try { localStorage.setItem('rp_slide_campaign', String(campaignUnlocked)); } catch (e) {} }
 function campaignComplete() { return campaignUnlocked > 9; }
+/* DAILY-LOCK — one picture per day: the date the last campaign picture was
+   completed is kept in rp_slide_campaign_day. After a completion today, the
+   NEXT picture stays locked until tomorrow; completed pictures stay
+   replayable. campaignCap() = highest level that may be opened right now. */
+var campaignDoneDay = '';
+try { campaignDoneDay = localStorage.getItem('rp_slide_campaign_day') || ''; } catch (e) {}
+function slideTodayStr() { var d = new Date(), p = function (v) { return (v < 10 ? '0' : '') + v; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function saveCampaignDay() { try { localStorage.setItem('rp_slide_campaign_day', campaignDoneDay); } catch (e) {} }
+function campaignCap() {
+  if (campaignDoneDay === slideTodayStr()) return Math.max(1, campaignUnlocked - 1);
+  return campaignUnlocked;
+}
+function nextPictureLockedToday() { return campaignDoneDay === slideTodayStr() && campaignUnlocked <= 9 && campaignUnlocked > campaignCap(); }
 var thumbSrc = {};
 function sceneCanvas(theme) {
   if (!thumbSrc[theme]) {
@@ -690,6 +703,7 @@ function startPuzzle() {
   updateHud();
 }
 function startLevel(lvl) {
+  if (lvl > campaignCap()) { showMenu(); return; }   // DAILY-LOCK: next picture unlocks tomorrow (menu banner says so)
   curLevel = lvl; mode = 'campaign';
   selTheme = LEVELS[lvl - 1].theme; selSize = LEVELS[lvl - 1].size;
   startPuzzle();
@@ -709,9 +723,10 @@ function renderLevelMap() {
       var d = LEVELS[lvl - 1];
       var node = document.createElement('button');
       node.className = 'lvlNode';
+      var cap = campaignCap();
       var badge, cls = '';
       if (lvl < campaignUnlocked) { badge = '✓'; }
-      else if (lvl === campaignUnlocked) { badge = '▶'; cls = ' current'; }
+      else if (lvl === campaignUnlocked && lvl <= cap) { badge = '▶'; cls = ' current'; }
       else { badge = '🔒'; cls = ' locked'; }
       node.className += cls;
       var tc = document.createElement('canvas'); tc.width = 144; tc.height = 144;
@@ -722,15 +737,16 @@ function renderLevelMap() {
       var ln = document.createElement('div'); ln.className = 'ln';
       ln.textContent = 'L' + lvl + ' · ' + THEME_NAMES[d.theme].replace(/^\S+\s/, '') + ' ' + d.size + '×' + d.size;
       node.appendChild(ln);
-      if (lvl <= campaignUnlocked) node.addEventListener('click', function () { ac(); sfxClick(); startLevel(lvl); });
+      if (lvl <= cap) node.addEventListener('click', function () { ac(); sfxClick(); startLevel(lvl); });
       map.appendChild(node);
     })(i + 1);
   }
   var done = campaignComplete();
-  document.getElementById('campaignBanner').textContent = done ? '🏆 Campaign Complete!' : 'Campaign · Level ' + campaignUnlocked + ' of 9';
+  document.getElementById('campaignBanner').textContent = done ? '🏆 Campaign Complete!' : (nextPictureLockedToday() ? '🗓 Today\'s picture done — next picture unlocks tomorrow' : 'Campaign · Level ' + campaignUnlocked + ' of 9');
   document.getElementById('previewLabel').textContent = done ? '🏆 ALL 9 PICTURES DONE' : 'LEVEL ' + campaignUnlocked + ' PICTURE';
   var sb = document.getElementById('startBtn');
   if (done) { sb.classList.add('hidden'); document.getElementById('mixBtn').classList.remove('hidden'); }
+  else if (nextPictureLockedToday()) { sb.classList.remove('hidden'); sb.textContent = '🔒 Next picture unlocks tomorrow'; document.getElementById('mixBtn').classList.add('hidden'); }
   else { sb.classList.remove('hidden'); sb.textContent = '▶ Play Level ' + campaignUnlocked; document.getElementById('mixBtn').classList.add('hidden'); }
 }
 function showMenu() {
@@ -796,11 +812,12 @@ function doWin() {
   reportScore(score);
   var stats;
   if (mode === 'campaign') {
-    if (curLevel >= campaignUnlocked && campaignUnlocked < 10) { campaignUnlocked = curLevel + 1; saveCampaign(); }
+    if (curLevel >= campaignUnlocked && campaignUnlocked < 10) { campaignUnlocked = curLevel + 1; saveCampaign(); campaignDoneDay = slideTodayStr(); saveCampaignDay(); }   // DAILY-LOCK: one picture per day
     document.getElementById('wonTitle').textContent = '🎉 Level ' + curLevel + ' complete!';
     stats = 'Level ' + curLevel + ' · ' + THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
     if (curLevel === 9) stats += '<br>🏆 Campaign Complete! Random Mix is unlocked on the map!';
-    document.getElementById('nextBtn').classList.toggle('hidden', curLevel >= 9);
+    else if (nextPictureLockedToday()) stats += '<br>🗓 Next picture unlocks tomorrow — come back then!';
+    document.getElementById('nextBtn').classList.toggle('hidden', curLevel >= 9 || (curLevel + 1) > campaignCap());
   } else {
     document.getElementById('wonTitle').textContent = '🎉 Picture Complete!';
     stats = '🔀 Random Mix · ' + THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;

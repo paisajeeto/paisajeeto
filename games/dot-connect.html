@@ -86,6 +86,8 @@
 /* ============ Rupiyo score bridge ============ */
 var GAME_ID = 'dot-connect';
 try { GAME_ID = new URLSearchParams(location.search).get('rp_game') || GAME_ID; } catch (e) {}
+var RP_MODE = '';
+try { RP_MODE = new URLSearchParams(location.search).get('mode') || ''; } catch (e) {}
 var scoreSent = false;
 function reportScore(s) {
   if (scoreSent) return; scoreSent = true;
@@ -252,10 +254,22 @@ function loadDaily() {
   if (d.unlocked > TOTAL_LEVELS - 1) d.unlocked = TOTAL_LEVELS - 1;
   if (!d.fails) d.fails = {};
   if (!d.solvedToday) d.solvedToday = {};
+  if (typeof d.doneDay !== 'string') d.doneDay = '';
+  if (typeof d.doneLevel !== 'number') d.doneLevel = -1;
   return d;
 }
 var daily = loadDaily();
 function saveDaily() { try { localStorage.setItem('rp_dot_daily', JSON.stringify(daily)); } catch (e) {} }
+/* DAILY-LOCK — one new level per day: once the frontier level is completed
+   today (doneDay/doneLevel), the NEXT level stays locked until tomorrow.
+   Everything up to and including today's completed level stays playable in
+   every mode — Earn More, and Daily Task quest sessions (mode=quest) — and
+   still reports its score, so the daily quest can always be finished. */
+function progressCap() {
+  if (daily.doneDay === todayStr()) return Math.min(daily.unlocked, Math.max(0, daily.doneLevel));
+  return daily.unlocked;
+}
+function nextLockedToday() { return daily.doneDay === todayStr() && daily.unlocked > progressCap(); }
 function refreshDaily() {
   var t = todayStr();
   if (daily.day !== t) {
@@ -318,6 +332,7 @@ function snapshot() {
 function loadLevel(i) {
   refreshDaily();
   if (i > daily.unlocked) return;
+  if (i > progressCap()) { showMenu('🔒 Next level unlocks tomorrow — come back for tomorrow\'s level.'); return; }
   if ((daily.fails[i] || 0) >= 3) { showMenu('🔒 Level ' + (i + 1) + ' is locked for today — back tomorrow, new puzzle!'); return; }
   lvl = i;
   var nPairs = LEVELS[lvl].pairs.length;
@@ -349,7 +364,7 @@ function buildMenu() {
   for (var i = 0; i < LEVELS.length; i++) {
     (function (idx) {
       var dayLocked = (daily.fails[idx] || 0) >= 3;
-      var seqLocked = idx > daily.unlocked;
+      var seqLocked = idx > progressCap();
       var b = document.createElement('button');
       b.className = 'lvlBtn' + (daily.solvedToday[idx] ? ' done' : '') + ((dayLocked || seqLocked) ? ' locked' : '');
       b.textContent = (dayLocked || seqLocked) ? '🔒' : (idx + 1) + (daily.solvedToday[idx] ? ' ✓' : '') + failPips(idx).replace(' · ', ' ');
@@ -358,6 +373,8 @@ function buildMenu() {
     })(i);
   }
   document.getElementById('menuFinishBtn').classList.toggle('hidden', sessionScore <= 0);
+  var mn = document.getElementById('menuNote');
+  if (nextLockedToday() && !mn.textContent) mn.textContent = '🗓 Today\'s level done — the next level unlocks tomorrow. Replays still earn coins!';
 }
 function showMenu(note) {
   state = 'menu'; active = -1;
@@ -470,7 +487,9 @@ function solveLevel() {
     sessionScore += solvedPtsLast;
   }
   daily.solvedToday[lvl] = true;
+  var wasFrontier = (lvl === daily.unlocked);
   if (lvl + 1 > daily.unlocked && lvl + 1 < LEVELS.length) daily.unlocked = lvl + 1;
+  if (wasFrontier) { daily.doneDay = todayStr(); daily.doneLevel = lvl; }   // DAILY-LOCK: one new level per day
   saveDaily();
   sfxWin();
   var g = gridGeom();
@@ -478,7 +497,8 @@ function solveLevel() {
   if (navigator.vibrate) { try { navigator.vibrate(50); } catch (e) {} }
   document.getElementById('solvedPts').textContent = solvedPtsLast > 0 ? '+' + solvedPtsLast : '✓';
   document.getElementById('solvedNote').textContent = (solvedPtsLast > 0 ? 'Level solved! ' : 'Already scored this session. ') + 'Session score: ' + sessionScore;
-  document.getElementById('nextBtn').style.display = (lvl + 1 < LEVELS.length) ? '' : 'none';
+  if (wasFrontier && nextLockedToday()) document.getElementById('solvedNote').textContent += ' 🗓 Next level unlocks tomorrow.';
+  document.getElementById('nextBtn').style.display = (lvl + 1 < LEVELS.length && lvl + 1 <= progressCap()) ? '' : 'none';
   document.getElementById('solvedPanel').classList.remove('hidden');
   updateHud();
   if (lvl === LEVELS.length - 1) setTimeout(function () { if (state === 'solved') finishSession(); }, 1600);
