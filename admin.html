@@ -101,8 +101,11 @@
   </div>
 
   <div class="card"><h2>💼 Jobs</h2>
-    <p class="muted">Jobs shown in the app's Jobs tab, filterable by category. Or set a feed URL that returns a JSON array of job objects (title, company, location, category, salary, url) — when the feed loads, the app uses it instead of this list.</p>
-    <label>Jobs feed URL (optional)</label><input id="f_jobsFeedUrl" type="text" placeholder="https://…/jobs.json">
+    <p class="muted">The app's Jobs tab shows live listings from the free Adzuna API for each user's saved city, plus Indeed / LinkedIn search buttons. Get free keys at developer.adzuna.com and paste them here — while the keys are blank the tab shows an "activates soon" note and the search buttons still work. (The manual list below is kept in the config but is no longer shown in the app.)</p>
+    <label>Adzuna App ID</label><input id="f_adzunaAppId" type="text" placeholder="e.g. a1b2c3d4">
+    <label>Adzuna App Key</label><input id="f_adzunaKey" type="text" placeholder="e.g. 0123456789abcdef0123456789abcdef">
+    <label>Default jobs country (users can change it in the app)</label><select id="f_jobsCountry"><option value="in">India (in)</option><option value="us">United States (us)</option><option value="gb">United Kingdom (gb)</option><option value="au">Australia (au)</option><option value="ca">Canada (ca)</option></select>
+    <label>Jobs feed URL (legacy — optional)</label><input id="f_jobsFeedUrl" type="text" placeholder="https://…/jobs.json">
     <div id="jobList"></div>
     <button class="btn ghost small" id="addJob">+ Add job</button>
   </div>
@@ -146,7 +149,7 @@ let CFG = null;
 const $ = id => document.getElementById(id);
 function msg(t){ const m = $("msg"); m.textContent = t; m.style.display = "block"; setTimeout(() => m.style.display = "none", 3500); }
 
-const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25,"maxCoinsPerDay":1000},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 Daily Challenge — Win or Nothing!","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""}};
+const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25,"maxCoinsPerDay":1000},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 Daily Challenge — Win or Nothing!","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","adzunaAppId":"","adzunaKey":"","jobsCountry":"in","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""}};
 
 function fill(c){
   CFG = JSON.parse(JSON.stringify(c));
@@ -169,6 +172,7 @@ function fill(c){
   $("f_chalFree").value = CFG.challenge.freePerDay ?? 1;
   CFG.jobs = CFG.jobs || [];
   $("f_jobsFeedUrl").value = CFG.jobsFeedUrl || "";
+  $("f_adzunaAppId").value = CFG.adzunaAppId || ""; $("f_adzunaKey").value = CFG.adzunaKey || ""; $("f_jobsCountry").value = CFG.jobsCountry || "in";
   renderSegs(); renderGames(); renderAssets(); renderTasks(); renderPays(); renderJobs();
   $("f_payoutFormUrl").value = CFG.payoutFormUrl || ""; $("f_whatsapp").value = CFG.supportWhatsapp || ""; $("f_supportEmail").value = CFG.supportEmail || "";
   CFG.firebase = CFG.firebase || {enabled:false, apiKey:"", authDomain:"", projectId:"", appId:""};
@@ -269,6 +273,7 @@ function collect(){
   CFG.challenge = { enabled: $("f_chalEnabled").checked, title: $("f_chalTitle").value, subtitle: $("f_chalSubtitle").value, freePerDay: Number($("f_chalFree").value) };
   CFG.referral = { enabled: $("f_refEnabled").checked, welcomeBonus: Number($("f_refBonus").value) };
   CFG.jobsFeedUrl = $("f_jobsFeedUrl").value;
+  CFG.adzunaAppId = $("f_adzunaAppId").value.trim(); CFG.adzunaKey = $("f_adzunaKey").value.trim(); CFG.jobsCountry = $("f_jobsCountry").value || "in";
   CFG.payoutFormUrl = $("f_payoutFormUrl").value; CFG.supportWhatsapp = $("f_whatsapp").value; CFG.supportEmail = $("f_supportEmail").value;
   CFG.firebase = { enabled: $("f_fbEnabled").checked, apiKey: $("f_fbApiKey").value.trim(), authDomain: $("f_fbAuthDomain").value.trim(), projectId: $("f_fbProjectId").value.trim(), appId: $("f_fbAppId").value.trim() };
   return CFG;
