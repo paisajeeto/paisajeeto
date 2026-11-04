@@ -19,18 +19,24 @@
 <body>
 <main>
   <h1>PaisaJeeto <span>Privacy Policy</span></h1>
-  <p class="updated">Last updated: 2 November 2026</p>
+  <p class="updated">Last updated: 4 November 2026</p>
 
   <p>PaisaJeeto ("the app") is a free play-and-earn mini-games app. This policy explains, in plain language, what information the app does and does not handle. By using PaisaJeeto you agree to this policy.</p>
 
-  <h2>1. No accounts, no sign-up</h2>
-  <p>PaisaJeeto has no user accounts. You never create a username or password, and the app never asks for your name, email address, phone number, or any other personal details just to play.</p>
+  <h2>1. Accounts and sign-up</h2>
+  <p>To play, you create a free account with an <strong>email address and password</strong>. Sign-in is handled by <strong>Firebase Authentication</strong>, a Google service. Your account profile is stored in <strong>Firestore</strong> (Google's database) and contains: your email address, your referral code, the referral code of the person who referred you (if you used one), a copy ("mirror") of your coin balance, and your referral-bonus record (bonuses pending and bonuses received). Your account is what lets your wallet follow you — if you reinstall the app or change phones, signing in restores your balance from this profile.</p>
 
-  <h2>2. Your game data stays on your phone</h2>
-  <p>Your coin balance, game progress, daily play counts, spin history and settings are stored <strong>only on your own device</strong> (in the app's local storage). They are not sent to us or to any server. If you uninstall the app or clear its data, this information is permanently deleted and cannot be recovered.</p>
+  <h2>2. What information is stored, and where</h2>
+  <p><strong>On your own device:</strong> your wallet (coin balance and lifetime earnings), game progress, daily play counts, spin history and settings are stored in the app's local storage. If you uninstall the app or clear its data, this local copy is deleted.</p>
+  <p><strong>In your account:</strong> the profile described in Section 1, stored in Firestore.</p>
+  <p><strong>Payout requests:</strong> if you request a payout, the request is saved with the payout method you chose, the UPI ID or other payment details <strong>you type in yourself</strong>, and the coin amount, so the request can be processed (see Section 5).</p>
+  <p><strong>Notifications:</strong> the app stores a push-notification token linked to your account so we can send you notifications (for example, about your account or the app). You can turn notifications off at any time in your phone's settings for the app.</p>
+  <p><strong>Usage and diagnostics:</strong> the version of the app with notifications includes <strong>Firebase Analytics</strong>, which collects app-usage and diagnostics information (such as app opens and technical performance data) that helps us keep the app working.</p>
 
-  <h2>3. Information we collect</h2>
-  <p>The app itself collects <strong>no personal data</strong>. We run no analytics, no tracking, and no user profiling inside the app. The app connects to the internet only to download its game configuration (game list, rewards and settings) from our configuration host.</p>
+  <h2>3. How it is used — and what we never collect</h2>
+  <p>Your information is used only to: run your account and keep your balance in sync; run referral rewards; process payouts that you request; send notifications; and keep the service working and secure.</p>
+  <p>We do <strong>not</strong> access your camera, your contacts, or your location, and the app cannot read data from your other apps. We do <strong>not sell</strong> your personal data.</p>
+  <p>Your account information is kept while your account exists. You can delete your account and its information at any time — see <strong>Section 6</strong>. Records of payouts that have already been paid may be kept afterwards for accounting purposes.</p>
 
   <h2>4. Advertising</h2>
   <p>The current version of PaisaJeeto shows placeholder (dummy) ad screens and does not include a third-party advertising network. When advertising is enabled, ads will be provided by <strong>Google AdMob</strong>. Google may then collect and use an advertising identifier and related data to serve and measure ads, as described in Google's own policies: <a href="https://policies.google.com/technologies/ads">policies.google.com/technologies/ads</a> and <a href="https://policies.google.com/privacy">policies.google.com/privacy</a>. We do not control the data Google collects through AdMob.</p>
@@ -38,13 +44,16 @@
   <h2>5. Payout requests</h2>
   <p>Coins in PaisaJeeto are free, have no purchase price, cannot be bought, and are never sold. If you choose to redeem coins, you submit a payout request through a form and provide your UPI ID or Paytm number yourself. Those details are used <strong>only to process that payout manually</strong> (normally within 48 hours). They are not used for marketing and are not sold or shared with third parties, except the payment service needed to send your payout.</p>
 
-  <h2>6. Children</h2>
+  <h2>6. Account deletion</h2>
+  <p>You can delete your account at any time. In the app, go to the <strong>Wallet</strong> tab and tap <strong>Delete account</strong> — your sign-in account and account profile are deleted immediately. You can also request deletion by emailing paisajeeto3@gmail.com from your registered email address; those requests are processed within 7 days. Deleting your account permanently removes your email address, referral code and balance records held for the account, and cancels any pending payout request. Records of payouts already paid may be retained for accounting purposes. Full details are on the <a href="delete-account.html">account deletion page</a>.</p>
+
+  <h2>7. Children</h2>
   <p>PaisaJeeto is intended for users aged <strong>18 and above</strong>. It is not directed at children, and we do not knowingly accept payout details from anyone under 18.</p>
 
-  <h2>7. Changes to this policy</h2>
+  <h2>8. Changes to this policy</h2>
   <p>If this policy changes, the updated version will be posted on this page with a new "Last updated" date.</p>
 
-  <h2>8. Spin Wheel Rules</h2>
+  <h2>9. Spin Wheel Rules</h2>
   <p>The spin wheel in PaisaJeeto is completely <strong>free</strong> — no purchase is necessary, ever, and spins can never be bought. You receive free spins each day (and can earn extra spins by watching an ad). Every spin lands on one segment of the wheel with the following fixed chances:</p>
   <ul>
     <li>5 coins — 22%</li>
@@ -58,7 +67,7 @@
   </ul>
   <p>These same odds are also shown in the app, directly under the spin wheel. Coins redeem at a fixed rate of <strong>100 coins = ₹1</strong>, as stated in the app's wallet.</p>
 
-  <h2>9. Contact</h2>
+  <h2>10. Contact</h2>
   <p class="note">Contact: paisajeeto3@gmail.com</p>
 </main>
 </body>
