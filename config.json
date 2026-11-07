@@ -246,9 +246,9 @@
   "jobsFeedUrl": "",
   "notify": {
     "on": true,
-    "hour": 8,
+    "hour": 18,
     "texts": [
-      "Good morning! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
+      "Good evening! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
     ]
   },
   "payoutFormUrl": "",
