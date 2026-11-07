@@ -114,6 +114,11 @@
     <label>Support email (optional — job-update registrations are emailed to this address)</label><input id="f_supportEmail" type="text" placeholder="you@example.com">
   </div>
 
+  <div class="card"><h2>📜 Redemption Terms &amp; Payout Rules</h2>
+    <p class="muted">These lines show on the app's <b>Wallet</b> tab, in the "Redemption Terms &amp; Payout Rules" card. One rule per line — the • bullet is added for you. Wrap words in **double stars** to make them <b>bold</b>, like **100 coins = ₹1**.</p>
+    <label>Rules (one per line)</label><textarea id="f_terms" rows="8"></textarea>
+  </div>
+
   <div class="card"><h2>📣 Announcement banner</h2>
     <p class="muted">A message strip at the very top of the app's Home tab. Turn it off and Home looks exactly as before.</p>
     <label><input type="checkbox" id="f_bannerOn" style="width:auto"> Show banner</label>
@@ -178,7 +183,7 @@ let CFG = null;
 const $ = id => document.getElementById(id);
 function msg(t){ const m = $("msg"); m.textContent = t; m.style.display = "block"; setTimeout(() => m.style.display = "none", 3500); }
 
-const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 Daily Challenge — Win or Nothing!","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""},"banner":{"on":false,"text":""},"sponsors":[],"sponsorSecs":6,"bc":{"on":false,"title":"","text":"","ver":0},"notify":{"on":false,"hour":8,"texts":[]},"ads":{"gapMinutes":0}};
+const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 PAISAJEETO — Sab Khelo, Sab Jeeto Challenge","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""},"banner":{"on":false,"text":""},"sponsors":[],"sponsorSecs":6,"bc":{"on":false,"title":"","text":"","ver":0},"notify":{"on":false,"hour":8,"texts":[]},"terms":["Fixed rate: **100 coins = ₹1**.", "Minimum redemption is **1,000 coins (₹10)**.", "Redemption unlocks after **one successful referral** — a friend who joined with your referral code and has played for **48 hours**.", "Payout requests are **reviewed and paid within 48 hours**.", "**One account per device.** Creating multiple accounts to farm bonuses can void a payout.", "You must be **18 or older** to redeem.", "Coins are promotional rewards for playing. They have **no value outside this app**, cannot be bought, and cannot be transferred between accounts."],"ads":{"gapMinutes":0}};
 
 function fill(c){
   CFG = JSON.parse(JSON.stringify(c));
@@ -194,7 +199,7 @@ function fill(c){
   CFG.referral = CFG.referral || {enabled:true, welcomeBonus:50};
   $("f_refEnabled").checked = CFG.referral.enabled !== false;
   $("f_refBonus").value = CFG.referral.welcomeBonus ?? 50;
-  CFG.challenge = CFG.challenge || {enabled:true, title:"🏆 Daily Challenge — Win or Nothing!", subtitle:"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.", freePerDay:1};
+  CFG.challenge = CFG.challenge || {enabled:true, title:"🏆 PAISAJEETO — Sab Khelo, Sab Jeeto Challenge", subtitle:"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.", freePerDay:1};
   $("f_chalEnabled").checked = CFG.challenge.enabled !== false;
   $("f_chalTitle").value = CFG.challenge.title || "";
   $("f_chalSubtitle").value = CFG.challenge.subtitle || "";
@@ -224,6 +229,8 @@ function fill(c){
   $("f_notifyOn").checked = CFG.notify.on === true;
   $("f_notifyHour").value = CFG.notify.hour ?? 8;
   $("f_notifyTexts").value = (CFG.notify.texts || []).join("\n");
+  CFG.terms = Array.isArray(CFG.terms) ? CFG.terms : [];
+  $("f_terms").value = CFG.terms.map(l => "• " + l).join("\n");
   CFG.ads = CFG.ads || {gapMinutes:0};
   $("f_adGap").value = CFG.ads.gapMinutes ?? 0;
 }
@@ -346,6 +353,7 @@ function collect(){
   CFG.bc = { on: $("f_bcOn").checked, title: $("f_bcTitle").value, text: $("f_bcText").value, ver: bcVer };
   if (bcBump){ window.__bcVer = bcVer; $("bcVerNow").textContent = bcVer; $("f_bcBump").checked = false; }   // one-shot: the baseline moves up, so a second save in this session can never downgrade the version
   CFG.notify = { on: $("f_notifyOn").checked, hour: Number($("f_notifyHour").value) || 8, texts: $("f_notifyTexts").value.split("\n").map(s => s.trim()).filter(Boolean) };
+  CFG.terms = $("f_terms").value.split("\n").map(s => s.trim().replace(/^•\s*/, "")).filter(Boolean);
   CFG.ads = { gapMinutes: Number($("f_adGap").value) || 0 };
   return CFG;
 }
