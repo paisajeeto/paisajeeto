@@ -114,6 +114,39 @@
     <label>Support email (optional — job-update registrations are emailed to this address)</label><input id="f_supportEmail" type="text" placeholder="you@example.com">
   </div>
 
+  <div class="card"><h2>📣 Announcement banner</h2>
+    <p class="muted">A message strip at the very top of the app's Home tab. Turn it off and Home looks exactly as before.</p>
+    <label><input type="checkbox" id="f_bannerOn" style="width:auto"> Show banner</label>
+    <label>Banner text</label><input id="f_bannerText" type="text" placeholder="e.g. 🎉 Diwali bonus week — double coins on all games!">
+  </div>
+
+  <div class="card"><h2>💎 Sponsors</h2>
+    <p class="muted">Sponsor cards rotate on Home, just below the Spin &amp; Win wheel. A card shows when it has a title, text or image. Tapping it opens the link in the browser.</p>
+    <label>Seconds each sponsor stays (rotation)</label><input id="f_sponsorSecs" type="number">
+    <div id="sponsorList"></div>
+    <button class="btn ghost small" id="addSponsor">+ Add sponsor</button>
+  </div>
+
+  <div class="card"><h2>📬 Broadcast message — to all users</h2>
+    <p class="muted">A pop-up every user sees once, on opening the app. Current message version: <b id="bcVerNow">0</b>. Tick <b>Send as new</b> when saving and the version goes up by 1, so everyone sees the pop-up again — use it whenever you change the message.</p>
+    <label><input type="checkbox" id="f_bcOn" style="width:auto"> Broadcast on</label>
+    <label>Title</label><input id="f_bcTitle" type="text" placeholder="e.g. Big news 🎉">
+    <label>Message</label><textarea id="f_bcText" rows="3" placeholder="Your message to every user…"></textarea>
+    <label><input type="checkbox" id="f_bcBump" style="width:auto"> Send as new (bump version on save)</label>
+  </div>
+
+  <div class="card"><h2>🔔 Daily morning notification</h2>
+    <p class="muted">The phone itself shows one reminder every morning — no server, no Firebase campaign needed. The app re-arms the next 7 mornings every time it is opened. Write one message per line; they rotate day by day. Use <b>{coins}</b> for the user's balance and <b>{plays}</b> for today's remaining free plays — both are filled in automatically.</p>
+    <label><input type="checkbox" id="f_notifyOn" style="width:auto"> Morning notification on</label>
+    <label>Hour of the morning (0–23)</label><input id="f_notifyHour" type="number">
+    <label>Messages (one per line)</label><textarea id="f_notifyTexts" rows="4" placeholder="Good morning! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"></textarea>
+  </div>
+
+  <div class="card"><h2>📺 Full-screen ads</h2>
+    <label>Minimum minutes between full-screen ads (0 = every time)</label><input id="f_adGap" type="number" step="any">
+    <p class="muted">0 keeps the current behaviour: an ad at every game break. A number (fractions like 0.5 work) quietly skips break ads that come sooner than that after the previous one. Rewarded ads a user taps for extra plays are never skipped.</p>
+  </div>
+
   <div class="card"><h2>🔥 Firebase backend (optional)</h2>
     <p class="muted">Server wallet + phone-number login (see backend/SETUP.md). Paste your Firebase web config (Project settings → Your apps → Web) and tick Enabled only after the backend is deployed. While disabled — or with any field blank — the app runs exactly as today with the on-device wallet.</p>
     <label><input type="checkbox" id="f_fbEnabled" style="width:auto"> Enabled</label>
@@ -145,7 +178,7 @@ let CFG = null;
 const $ = id => document.getElementById(id);
 function msg(t){ const m = $("msg"); m.textContent = t; m.style.display = "block"; setTimeout(() => m.style.display = "none", 3500); }
 
-const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 Daily Challenge — Win or Nothing!","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""}};
+const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 Daily Challenge — Win or Nothing!","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""},"banner":{"on":false,"text":""},"sponsors":[],"sponsorSecs":6,"bc":{"on":false,"title":"","text":"","ver":0},"notify":{"on":false,"hour":8,"texts":[]},"ads":{"gapMinutes":0}};
 
 function fill(c){
   CFG = JSON.parse(JSON.stringify(c));
@@ -174,6 +207,25 @@ function fill(c){
   $("f_fbEnabled").checked = CFG.firebase.enabled === true;
   $("f_fbApiKey").value = CFG.firebase.apiKey || ""; $("f_fbAuthDomain").value = CFG.firebase.authDomain || "";
   $("f_fbProjectId").value = CFG.firebase.projectId || ""; $("f_fbAppId").value = CFG.firebase.appId || "";
+  CFG.banner = CFG.banner || {on:false, text:""};
+  $("f_bannerOn").checked = CFG.banner.on === true;
+  $("f_bannerText").value = CFG.banner.text || "";
+  CFG.sponsors = Array.isArray(CFG.sponsors) ? CFG.sponsors : [];
+  $("f_sponsorSecs").value = CFG.sponsorSecs ?? 6;
+  renderSponsors();
+  CFG.bc = CFG.bc || {on:false, title:"", text:"", ver:0};
+  window.__bcVer = Number(CFG.bc.ver) || 0;
+  $("bcVerNow").textContent = window.__bcVer;
+  $("f_bcOn").checked = CFG.bc.on === true;
+  $("f_bcTitle").value = CFG.bc.title || "";
+  $("f_bcText").value = CFG.bc.text || "";
+  $("f_bcBump").checked = false;
+  CFG.notify = CFG.notify || {on:false, hour:8, texts:[]};
+  $("f_notifyOn").checked = CFG.notify.on === true;
+  $("f_notifyHour").value = CFG.notify.hour ?? 8;
+  $("f_notifyTexts").value = (CFG.notify.texts || []).join("\n");
+  CFG.ads = CFG.ads || {gapMinutes:0};
+  $("f_adGap").value = CFG.ads.gapMinutes ?? 0;
 }
 function itemRow(html){ const d = document.createElement("div"); d.className = "item"; d.innerHTML = html; return d; }
 function delBtn(fn){ const b = document.createElement("button"); b.className = "btn ghost small"; b.textContent = "✕"; b.addEventListener("click", fn); return b; }
@@ -258,6 +310,22 @@ function renderPays(){
 }
 $("addPay").addEventListener("click", () => { CFG.payouts.push({method:"UPI", minCoins:10000, note:""}); renderPays(); });
 
+function renderSponsors(){
+  const w = $("sponsorList"); w.innerHTML = "";
+  (CFG.sponsors || []).forEach((s, i) => {
+    const r = itemRow(
+      '<div class="row3"><div><label>Company</label><input data-k="company" value="' + (s.company || "") + '"></div><div><label>Title</label><input data-k="title" value="' + (s.title || "") + '"></div><div><label>Button text</label><input data-k="btn" value="' + (s.btn || "Open") + '"></div></div>' +
+      '<label>Text</label><input data-k="text" value="' + (s.text || "") + '">' +
+      '<label>Link (https://…)</label><input data-k="link" value="' + (s.link || "") + '">' +
+      '<label>Image link (optional)</label><input data-k="img" value="' + (s.img || "") + '">' +
+      '<label><input type="checkbox" data-k="on" ' + (s.on !== false ? "checked" : "") + ' style="width:auto"> Show this sponsor</label>');
+    r.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => { const k = inp.dataset.k; CFG.sponsors[i][k] = inp.type === "checkbox" ? inp.checked : inp.value; }));
+    r.appendChild(delBtn(() => { CFG.sponsors.splice(i, 1); renderSponsors(); }));
+    w.appendChild(r);
+  });
+}
+$("addSponsor").addEventListener("click", () => { CFG.sponsors = CFG.sponsors || []; CFG.sponsors.push({company:"", title:"", text:"", btn:"Open", link:"https://", img:"", on:true}); renderSponsors(); });
+
 function collect(){
   CFG.appName = $("f_appName").value; CFG.tagline = $("f_tagline").value;
   CFG.wallet.coinsPerRupee = Number($("f_coinsPerRupee").value); CFG.wallet.dailyBonusCoins = Number($("f_dailyBonus").value);
@@ -270,6 +338,15 @@ function collect(){
   CFG.jobsFeedUrl = $("f_jobsFeedUrl").value;
   CFG.payoutFormUrl = $("f_payoutFormUrl").value; CFG.supportWhatsapp = $("f_whatsapp").value; CFG.supportEmail = $("f_supportEmail").value;
   CFG.firebase = { enabled: $("f_fbEnabled").checked, apiKey: $("f_fbApiKey").value.trim(), authDomain: $("f_fbAuthDomain").value.trim(), projectId: $("f_fbProjectId").value.trim(), appId: $("f_fbAppId").value.trim() };
+  CFG.banner = { on: $("f_bannerOn").checked, text: $("f_bannerText").value };
+  CFG.sponsorSecs = Number($("f_sponsorSecs").value) || 6;
+  /* sponsors are edited live into CFG by renderSponsors' inputs — nothing to collect */
+  const bcBump = $("f_bcBump").checked;
+  const bcVer = bcBump ? (window.__bcVer || 0) + 1 : (window.__bcVer || 0);
+  CFG.bc = { on: $("f_bcOn").checked, title: $("f_bcTitle").value, text: $("f_bcText").value, ver: bcVer };
+  if (bcBump){ window.__bcVer = bcVer; $("bcVerNow").textContent = bcVer; $("f_bcBump").checked = false; }   // one-shot: the baseline moves up, so a second save in this session can never downgrade the version
+  CFG.notify = { on: $("f_notifyOn").checked, hour: Number($("f_notifyHour").value) || 8, texts: $("f_notifyTexts").value.split("\n").map(s => s.trim()).filter(Boolean) };
+  CFG.ads = { gapMinutes: Number($("f_adGap").value) || 0 };
   return CFG;
 }
 
