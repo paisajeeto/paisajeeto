@@ -10,7 +10,7 @@
       "#1d2b1f"
     ],
     "imageUrl": "",
-    "mode": "image"
+    "mode": "moneyRain"
   },
   "banner": {
     "on": true,
@@ -246,7 +246,7 @@
   "jobsFeedUrl": "",
   "notify": {
     "on": true,
-    "hour": 18,
+    "hour": 19,
     "texts": [
       "Good evening! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
     ]
