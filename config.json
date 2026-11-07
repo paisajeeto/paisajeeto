@@ -246,7 +246,7 @@
   "jobsFeedUrl": "",
   "notify": {
     "on": true,
-    "hour": 19,
+    "hour": 20,
     "texts": [
       "Good evening! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
     ]
