@@ -337,7 +337,7 @@
   },
   "wheel": {
     "extraSpinPerAd": true,
-    "freeSpinsPerDay": 3,
+    "freeSpinsPerDay": 1,
     "segments": [
       {
         "coins": 5,
