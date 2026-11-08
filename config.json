@@ -20,7 +20,7 @@
     "on": true,
     "title": "Big news ✨",
     "text": "Broadcast message is on ",
-    "ver": 3
+    "ver": 4
   },
   "challenge": {
     "enabled": true,
