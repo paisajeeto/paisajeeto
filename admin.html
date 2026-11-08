@@ -69,10 +69,6 @@
     <button class="btn ghost small" id="addGame">+ Add game</button>
   </div>
 
-  <div class="card"><h2>🎯 Sniper Bottles art (URLs — blank = plain shapes)</h2>
-    <div id="assetFields"></div>
-  </div>
-
   <div class="card"><h2>✅ Tasks / offers</h2>
     <div id="taskList"></div>
     <button class="btn ghost small" id="addTask">+ Add task</button>
@@ -206,7 +202,7 @@ function fill(c){
   $("f_chalFree").value = CFG.challenge.freePerDay ?? 1;
   CFG.jobs = CFG.jobs || [];
   $("f_jobsFeedUrl").value = CFG.jobsFeedUrl || "";
-  renderSegs(); renderGames(); renderAssets(); renderTasks(); renderPays(); renderJobs();
+  renderSegs(); renderGames(); renderTasks(); renderPays(); renderJobs();
   $("f_payoutFormUrl").value = CFG.payoutFormUrl || ""; $("f_whatsapp").value = CFG.supportWhatsapp || ""; $("f_supportEmail").value = CFG.supportEmail || "";
   CFG.firebase = CFG.firebase || {enabled:false, apiKey:"", authDomain:"", projectId:"", appId:""};
   $("f_fbEnabled").checked = CFG.firebase.enabled === true;
@@ -270,17 +266,6 @@ function renderGames(){
   });
 }
 $("addGame").addEventListener("click", () => { CFG.games.push({id:"", title:"New Game", icon:"🎮", type:"url", url:"", rewardPerHit:20, playsPerDay:3, coinsPerPoint:1, maxCoinsPerPlay:50, dailyCap:200, enabled:true}); renderGames(); });
-
-const ASSET_LABELS = { bg:"Background image", rifle:"Rifle overlay", scope:"Scope ring", bottle:"Bottle", can:"Can", coin:"Coin", broken:"Broken bottle", fire:"FIRE button", shotSound:"Shot sound (mp3)", glassSound:"Glass sound (mp3)" };
-function renderAssets(){
-  const w = $("assetFields"); w.innerHTML = "";
-  Object.keys(ASSET_LABELS).forEach(k => {
-    const l = document.createElement("label"); l.textContent = ASSET_LABELS[k] + " URL";
-    const inp = document.createElement("input"); inp.type = "text"; inp.value = (CFG.sniperAssets || {})[k] || ""; inp.placeholder = "https://…";
-    inp.addEventListener("input", () => { CFG.sniperAssets[k] = inp.value; });
-    w.appendChild(l); w.appendChild(inp);
-  });
-}
 
 function renderTasks(){
   const w = $("taskList"); w.innerHTML = "";
