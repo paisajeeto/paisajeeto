@@ -17,10 +17,10 @@
     "text": "Diwali week bonus - double coins on Every game 🎯"
   },
   "bc": {
-    "on": false,
+    "on": true,
     "title": "Big news ✨",
     "text": "Broadcast message is on ",
-    "ver": 2
+    "ver": 3
   },
   "challenge": {
     "enabled": true,
