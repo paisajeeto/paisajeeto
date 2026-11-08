@@ -20,7 +20,7 @@
     "on": true,
     "title": "Big news ✨",
     "text": "Broadcast message is on ",
-    "ver": 4
+    "ver": 5
   },
   "challenge": {
     "enabled": true,
@@ -246,7 +246,7 @@
   "jobsFeedUrl": "",
   "notify": {
     "on": true,
-    "hour": 13,
+    "hour": 14,
     "texts": [
       "Good morning! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
     ]
