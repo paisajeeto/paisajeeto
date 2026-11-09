@@ -659,11 +659,11 @@ var LEVELS = [
 var campaignUnlocked = 1; // highest unlocked level (1..9); 10 = campaign complete
 try { campaignUnlocked = parseInt(localStorage.getItem('rp_slide_campaign') || '1', 10) || 1; } catch (e) {}
 if (campaignUnlocked < 1) campaignUnlocked = 1;
-if (campaignUnlocked > 10) campaignUnlocked = 10;
+if (campaignUnlocked > LEVELS.length + 1) campaignUnlocked = LEVELS.length + 1;
 var mode = 'campaign'; // campaign | mix
 var curLevel = 1;
 function saveCampaign() { try { localStorage.setItem('rp_slide_campaign', String(campaignUnlocked)); } catch (e) {} }
-function campaignComplete() { return campaignUnlocked > 9; }
+function campaignComplete() { return campaignUnlocked > LEVELS.length; }
 /* DAILY-LOCK — one picture per day: the date the last campaign picture was
    completed is kept in rp_slide_campaign_day. After a completion today, the
    NEXT picture stays locked until tomorrow; completed pictures stay
@@ -768,7 +768,7 @@ function renderLevelMap() {
     })(i + 1);
   }
   var done = campaignComplete();
-  document.getElementById('campaignBanner').textContent = done ? '🏆 Campaign Complete!' : (nextPictureLockedToday() ? '🗓 Today\'s picture done — next picture unlocks tomorrow' : 'Campaign · Level ' + campaignUnlocked + ' of 9');
+  document.getElementById('campaignBanner').textContent = done ? '🏆 Campaign Complete!' : (nextPictureLockedToday() ? '🗓 Today\'s picture done — next picture unlocks tomorrow' : 'Campaign · Level ' + campaignUnlocked + ' of ' + LEVELS.length);
   document.getElementById('previewLabel').textContent = done ? '🏆 ALL 9 PICTURES DONE' : 'LEVEL ' + campaignUnlocked + ' PICTURE';
   var sb = document.getElementById('startBtn');
   if (done) { sb.classList.add('hidden'); document.getElementById('mixBtn').classList.remove('hidden'); }
@@ -780,7 +780,7 @@ function showMenu() {
   document.getElementById('wonPanel').classList.add('hidden');
   document.getElementById('menuPanel').classList.remove('hidden');
   renderLevelMap();
-  renderPicture(LEVELS[Math.min(campaignUnlocked, 9) - 1].theme);
+  renderPicture(LEVELS[Math.min(campaignUnlocked, LEVELS.length) - 1].theme);
 }
 function fmtTime(s) {
   s = Math.floor(s);
@@ -838,12 +838,12 @@ function doWin() {
   reportScore(score);
   var stats;
   if (mode === 'campaign') {
-    if (curLevel >= campaignUnlocked && campaignUnlocked < 10) { campaignUnlocked = curLevel + 1; saveCampaign(); campaignDoneDay = slideTodayStr(); saveCampaignDay(); }   // DAILY-LOCK: one picture per day
+    if (curLevel >= campaignUnlocked && campaignUnlocked < LEVELS.length + 1) { campaignUnlocked = curLevel + 1; saveCampaign(); campaignDoneDay = slideTodayStr(); saveCampaignDay(); }   // DAILY-LOCK: one picture per day
     document.getElementById('wonTitle').textContent = '🎉 Level ' + curLevel + ' complete!';
     stats = 'Level ' + curLevel + ' · ' + THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
-    if (curLevel === 9) stats += '<br>🏆 Campaign Complete! Random Mix is unlocked on the map!';
+    if (curLevel === LEVELS.length) stats += '<br>🏆 Campaign Complete! Random Mix is unlocked on the map!';
     else if (nextPictureLockedToday()) stats += '<br>🗓 Next picture unlocks tomorrow — come back then!';
-    document.getElementById('nextBtn').classList.toggle('hidden', curLevel >= 9 || (curLevel + 1) > campaignCap());
+    document.getElementById('nextBtn').classList.toggle('hidden', curLevel >= LEVELS.length || (curLevel + 1) > campaignCap());
   } else {
     document.getElementById('wonTitle').textContent = '🎉 Picture Complete!';
     stats = '🔀 Random Mix · ' + THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
@@ -1000,13 +1000,62 @@ document.getElementById('muteBtn').addEventListener('click', function (e) {
 document.addEventListener('visibilitychange', function () { lastT = 0; });
 
 resize();
-curLevel = Math.min(campaignUnlocked, 9);
+curLevel = Math.min(campaignUnlocked, LEVELS.length);
 selTheme = LEVELS[curLevel - 1].theme; selSize = LEVELS[curLevel - 1].size;
 board = solvedBoard(); n = selSize;
 renderPicture(selTheme);
 renderLevelMap();
 updateHud();
 requestAnimationFrame(loop);
+
+/* ============ Config-driven levels (owner, 2026-11-10) ============
+   The live config may carry levels['slide-puzzle'] — campaign entries
+   in this game's own format ({theme, size} per picture). When present
+   and EVERY entry validates (theme must be one of this game's scenes,
+   size 3 or 4), the list replaces the built-in LEVELS and the map is
+   re-rendered; anything else (offline, missing key, one bad entry)
+   silently keeps the built-ins, so a bad config can never break the
+   game. Applied only from the menu — a puzzle in progress is never
+   swapped under the player. */
+var PJ_CFG_URL = 'https://paisajeeto.github.io/paisajeeto/config.json';
+window.__pjLevelsSource = 'builtin';
+function pjValidSlideLevels(a) {
+  if (!Array.isArray(a) || !a.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    var e = a[i];
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return false;
+    if (!Object.prototype.hasOwnProperty.call(SCENES, e.theme)) return false;
+    if (e.size !== 3 && e.size !== 4) return false;
+  }
+  return true;
+}
+function pjApplySlideLevels(a) {
+  if (state !== 'menu') return false;
+  LEVELS = a;
+  if (campaignUnlocked > LEVELS.length + 1) { campaignUnlocked = LEVELS.length + 1; saveCampaign(); }
+  curLevel = Math.min(campaignUnlocked, LEVELS.length);
+  selTheme = LEVELS[curLevel - 1].theme; selSize = LEVELS[curLevel - 1].size;
+  n = selSize; board = solvedBoard();
+  window.__pjLevelsSource = 'config';
+  showMenu();
+  return true;
+}
+(function pjLoadLevels() {
+  if (typeof fetch !== 'function') return;
+  var ctl = null;
+  try {
+    if ('AbortController' in window) {
+      ctl = new AbortController();
+      setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 2500);
+    }
+  } catch (e) {}
+  fetch(PJ_CFG_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      try { if (cfg && cfg.levels && pjValidSlideLevels(cfg.levels['slide-puzzle'])) pjApplySlideLevels(cfg.levels['slide-puzzle']); } catch (e) {}
+    })
+    .catch(function () {});
+})();
 </script>
 <div id="handHint" class="hhOn hhTap">👆</div>
 

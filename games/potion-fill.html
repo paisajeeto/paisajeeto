@@ -231,19 +231,51 @@ var sparkles = [];
 for (var si = 0; si < 26; si++) sparkles.push({ x: Math.random(), y: Math.random(), r: 1 + Math.random() * 2.2, tw: Math.random() * 9 });
 
 function flasksForLevel(n) { return Math.min(3 + n, 6); }
+
+/* ============ Level parameters — built-in formulas (config can override) ====
+   A level's data = { flasks, pour, zone }: how many flasks the level
+   has, how fast it pours, how wide the target band is. The built-ins
+   are the formulas below. config.levels['potion-fill'] may supply
+   per-level entries — any subset of the three fields (the rest keep
+   the formula value) — and levels past the end of the list keep the
+   formulas, exactly as the game always played. The params are
+   CAPTURED when a level starts, so a config that lands mid-level
+   changes nothing until the next level begins. */
+var LEVEL_PARAMS = null;
+function formulaParams(L) {
+  return {
+    flasks: flasksForLevel(L),
+    pour: 0.30 * Math.min(2.2, Math.pow(1.10, L - 1)),
+    zone: Math.max(0.018, 0.085 * Math.pow(0.90, L - 1))
+  };
+}
+function levelParams(L) {
+  var p = formulaParams(L);
+  var e = LEVEL_PARAMS && LEVEL_PARAMS[L - 1];
+  if (e) {
+    if (typeof e.flasks === 'number') p.flasks = e.flasks;
+    if (typeof e.pour === 'number') p.pour = e.pour;
+    if (typeof e.zone === 'number') p.zone = e.zone;
+  }
+  return p;
+}
+var curParams = null;
+function captureParams() { curParams = levelParams(runLevel); }
 function newFlask() {
   level = 0; pouring = false; bubbles = [];
   heat = 0; cracked = false; updateHeatBar();
   phase = 'pour'; resultMsg = ''; pourSfxT = 0;
   zoneC = runLevel >= 2 ? 0.45 + Math.random() * 0.40 : 0.42 + Math.random() * 0.30;
-  zoneHW = Math.max(0.018, 0.085 * Math.pow(0.90, runLevel - 1));
-  pourRate = 0.30 * Math.min(2.2, Math.pow(1.10, runLevel - 1));
+  var lp = curParams || levelParams(runLevel);
+  zoneHW = lp.zone;
+  pourRate = lp.pour;
 }
 function reset() {
   score = 0; scoreSent = false;
   flaskIdx = 0; flaskInLvl = 0; runLevel = CHALLENGE ? CHAL_START_LEVEL : 1; lives = CHALLENGE ? CHAL_LIVES : 3; maxLives = lives;
   heat = 0; cracked = false; dragon.phase = 'wait'; dragon.t = 0; dragon.nextIn = 2.8; dragon.again = false; dragon.doubled = false;
-  flasksTotal = flasksForLevel(runLevel);
+  captureParams();
+  flasksTotal = curParams.flasks;
   parts = []; pops = [];
   document.getElementById('levelPanel').classList.add('hidden');
   newFlask();
@@ -449,7 +481,7 @@ function update(dt) {
       adCalled = true;
       rpAd(function () {
         document.getElementById('levelPanel').classList.add('hidden');
-        runLevel++; flaskInLvl = 0; flasksTotal = flasksForLevel(runLevel);
+        runLevel++; flaskInLvl = 0; captureParams(); flasksTotal = curParams.flasks;
         phase = 'pour';
         newFlask();
         updateHud();
@@ -814,6 +846,50 @@ if (CHALLENGE) {
 
 resize(); reset();
 requestAnimationFrame(loop);
+
+/* ============ Config-driven levels (owner, 2026-11-10) ============
+   The live config may carry levels['potion-fill'] — per-level
+   {flasks, pour, zone} entries in this game's own format. When
+   present and EVERY entry validates, the list becomes the level-param
+   source (formula values fill any gap — see levelParams above);
+   anything else (offline, missing key, one bad entry) silently keeps
+   the built-in formulas, so a bad config can never break the game.
+   The swap itself is harmless at any moment: params are captured per
+   level, so a list that lands mid-level applies from the next level. */
+var PJ_CFG_URL = 'https://paisajeeto.github.io/paisajeeto/config.json';
+window.__pjLevelsSource = 'builtin';
+function pjValidPotionLevels(a) {
+  if (!Array.isArray(a) || !a.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    var e = a[i];
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return false;
+    if (e.flasks !== undefined && (!Number.isInteger(e.flasks) || e.flasks < 1 || e.flasks > 10)) return false;
+    if (e.pour !== undefined && (typeof e.pour !== 'number' || !(e.pour >= 0.05 && e.pour <= 1.5))) return false;
+    if (e.zone !== undefined && (typeof e.zone !== 'number' || !(e.zone >= 0.01 && e.zone <= 0.2))) return false;
+  }
+  return true;
+}
+(function pjLoadLevels() {
+  if (typeof fetch !== 'function') return;
+  var ctl = null;
+  try {
+    if ('AbortController' in window) {
+      ctl = new AbortController();
+      setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 2500);
+    }
+  } catch (e) {}
+  fetch(PJ_CFG_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      try {
+        if (cfg && cfg.levels && pjValidPotionLevels(cfg.levels['potion-fill'])) {
+          LEVEL_PARAMS = cfg.levels['potion-fill'];
+          window.__pjLevelsSource = 'config';
+        }
+      } catch (e) {}
+    })
+    .catch(function () {});
+})();
 </script>
 <div id="handHint" class="hhOn hhHold">👇</div>
 

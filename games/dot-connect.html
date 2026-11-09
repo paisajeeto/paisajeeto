@@ -169,6 +169,16 @@ var COLORS = [
   { name: 'Orange', main: '#ffa94d', dark: '#d9480f' },
   { name: 'Pink',   main: '#f06595', dark: '#a61e4d' }
 ];
+/* ============ Level specs — built-in (config can replace the list) ============
+   One entry per daily puzzle slot: n = grid size; pairs (optional)
+   pins the number of colour pairs — without it the generator draws the
+   count from the same n-based range it always used, so the built-in
+   specs below reproduce today's puzzles exactly. pjApplyDotLevels()
+   (bottom of this script) swaps in config.levels['dot-connect'] when
+   every entry validates; anything else keeps these built-ins. */
+var BUILTIN_SPEC = [{n:5},{n:5},{n:5},{n:5},{n:6},{n:6},{n:6},{n:6},{n:7},{n:7},{n:7},{n:7}];
+var LEVEL_SPEC = BUILTIN_SPEC;
+
 /* ============ Daily puzzle generator (pure — verified offline) ============ */
 /* GEN START */
 function hashSeed(str) {
@@ -239,7 +249,8 @@ function splitSegs(path, K, rng) {
   return segs;
 }
 function genLevelData(dayStr, idx) {
-  var n = idx < 4 ? 5 : (idx < 8 ? 6 : 7);
+  var spec = LEVEL_SPEC[idx] || { n: 7 };
+  var n = spec.n;
   var rng = mulberry32(hashSeed(dayStr + '#' + idx));
   var path = hamPath(n, rng), r, c;
   if (!path) { // guaranteed fallback: boustrophedon snake (always a valid Hamiltonian path)
@@ -250,7 +261,7 @@ function genLevelData(dayStr, idx) {
     }
   }
   var lo = n === 5 ? 4 : (n === 6 ? 5 : 6), hi = lo + 1;
-  var K = lo + Math.floor(rng() * (hi - lo + 1));
+  var K = (typeof spec.pairs === 'number') ? spec.pairs : lo + Math.floor(rng() * (hi - lo + 1));
   var segs = splitSegs(path, K, rng);
   var pairs = [];
   for (var i = 0; i < segs.length; i++) {
@@ -305,7 +316,7 @@ function refreshDaily() {
 }
 function buildDailyLevels() {
   var out = [];
-  for (var i = 0; i < TOTAL_LEVELS; i++) {
+  for (var i = 0; i < LEVEL_SPEC.length; i++) {
     var d = genLevelData(daily.day, i);
     out.push({ n: d.n, pairs: d.pairs });
   }
@@ -727,6 +738,53 @@ paths = []; complete = [];
 for (var ci = 0; ci < LEVELS[0].pairs.length; ci++) { paths.push([]); complete.push(false); }
 buildMenu(); updateHud();
 requestAnimationFrame(loop);
+
+/* ============ Config-driven levels (owner, 2026-11-10) ============
+   The live config may carry levels['dot-connect'] — level specs in
+   this game's own format ({n, pairs?} per daily slot). When present
+   and EVERY entry validates, the list replaces the built-in spec and
+   the daily puzzles are regenerated from it; anything else (offline,
+   missing key, one bad entry) silently keeps the built-ins, so a bad
+   config can never break the game. Applied only from the menu — a
+   level in progress is never swapped under the player. */
+var PJ_CFG_URL = 'https://paisajeeto.github.io/paisajeeto/config.json';
+window.__pjLevelsSource = 'builtin';
+function pjValidDotLevels(a) {
+  if (!Array.isArray(a) || !a.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    var e = a[i];
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return false;
+    if (!Number.isInteger(e.n) || e.n < 4 || e.n > 8) return false;
+    if (e.pairs !== undefined && (!Number.isInteger(e.pairs) || e.pairs < 3 || e.pairs > Math.floor(e.n * e.n / 3))) return false;
+  }
+  return true;
+}
+function pjApplyDotLevels(a) {
+  if (state !== 'menu') return false;
+  LEVEL_SPEC = a;
+  TOTAL_LEVELS = a.length;
+  if (daily.unlocked > TOTAL_LEVELS - 1) { daily.unlocked = TOTAL_LEVELS - 1; saveDaily(); }
+  LEVELS = buildDailyLevels();
+  window.__pjLevelsSource = 'config';
+  buildMenu(); updateHud();
+  return true;
+}
+(function pjLoadLevels() {
+  if (typeof fetch !== 'function') return;
+  var ctl = null;
+  try {
+    if ('AbortController' in window) {
+      ctl = new AbortController();
+      setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 2500);
+    }
+  } catch (e) {}
+  fetch(PJ_CFG_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { return r.json(); })
+    .then(function (cfg) {
+      try { if (cfg && cfg.levels && pjValidDotLevels(cfg.levels['dot-connect'])) pjApplyDotLevels(cfg.levels['dot-connect']); } catch (e) {}
+    })
+    .catch(function () {});
+})();
 </script>
 <div id="handHint" class="hhOn hhConnect">👆</div>
 
