@@ -147,6 +147,8 @@
   <div class="card"><h2>📺 Full-screen ads</h2>
     <label>Minimum minutes between full-screen ads (0 = every time)</label><input id="f_adGap" type="number" step="any">
     <p class="muted">0 keeps the current behaviour: an ad at every game break. A number (fractions like 0.5 work) quietly skips break ads that come sooner than that after the previous one. Rewarded ads a user taps for extra plays are never skipped.</p>
+    <label><input type="checkbox" id="f_adBanner" style="width:auto"> Banner ads (Home + Earn More)</label>
+    <p class="muted">A small always-on banner strip on the Home and Earn More tabs. It never appears inside a game or on the Wallet tab. Turn it off and those tabs look exactly as before.</p>
   </div>
 
   <div class="card"><h2>🔥 Firebase backend (optional)</h2>
@@ -176,14 +178,38 @@
 </div>
 
 <script>
+/* =====================================================================
+   PaisaJeeto Admin — fresh rebuild, 2026-11-10.
+   Rebuilt as one clean file per the owner's order, replacing the
+   patched panel. Same sections, same fields, same look — plus:
+   (1) MULTI-ROUTE LOAD: if the GitHub Pages route is dead on the
+       owner's network, the same config is fetched via the jsDelivr
+       CDN mirror, then via the GitHub API — first route that returns
+       a valid config wins, and the green summary names the route.
+   (2) SAVES USE THE LIVE FILE FORMAT: the live config.json is
+       pretty-printed with indent 1 and keeps its loaded key order;
+       collect() edits the parsed config IN PLACE, so keys this panel
+       does not know about (sniperAssets, firebase extras, anything
+       added later) survive a load → edit → save round-trip untouched.
+   (3) The 2026-11-09 save-guard is kept word for word.
+   ===================================================================== */
 let CFG = null;
 const $ = id => document.getElementById(id);
 function msg(t){ const m = $("msg"); m.textContent = t; m.style.display = "block"; setTimeout(() => m.style.display = "none", 3500); }
+const sleep = ms => new Promise(res => setTimeout(res, ms));
 
 const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 PAISAJEETO — Sab Khelo, Sab Jeeto Challenge","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""},"banner":{"on":false,"text":""},"sponsors":[],"sponsorSecs":6,"bc":{"on":false,"title":"","text":"","ver":0},"notify":{"on":false,"hour":8,"texts":[]},"terms":["Fixed rate: **100 coins = ₹1**.", "Minimum redemption is **1,000 coins (₹10)**.", "Redemption unlocks after **one successful referral** — a friend who joined with your referral code and has played for **48 hours**.", "Payout requests are **reviewed and paid within 48 hours**.", "**One account per device.** Creating multiple accounts to farm bonuses can void a payout.", "You must be **18 or older** to redeem.", "Coins are promotional rewards for playing. They have **no value outside this app**, cannot be bought, and cannot be transferred between accounts."],"ads":{"gapMinutes":0}};
 
+/* The live config.json format: JSON.stringify with indent 1, keys in
+   their loaded order, no trailing newline. Saving an untouched loaded
+   config with this must reproduce the live file byte for byte. */
+function serializeConfig(c){ return JSON.stringify(c, null, 1); }
+
 function fill(c){
   CFG = JSON.parse(JSON.stringify(c));
+  CFG.wallet = CFG.wallet || {coinsPerRupee:100, dailyBonusCoins:25};
+  CFG.background = CFG.background || {mode:"moneyRain", imageUrl:"", gradient:["#10131a","#1d2b1f"]};
+  CFG.wheel = CFG.wheel || {freeSpinsPerDay:3, extraSpinPerAd:true, segments:[]};
   $("f_appName").value = CFG.appName || ""; $("f_tagline").value = CFG.tagline || "";
   $("f_coinsPerRupee").value = CFG.wallet.coinsPerRupee; $("f_dailyBonus").value = CFG.wallet.dailyBonusCoins;
   $("f_bgMode").value = CFG.background.mode; $("f_bgImage").value = CFG.background.imageUrl || "";
@@ -230,6 +256,9 @@ function fill(c){
   $("f_terms").value = CFG.terms.map(l => "• " + l).join("\n");
   CFG.ads = CFG.ads || {gapMinutes:0};
   $("f_adGap").value = CFG.ads.gapMinutes ?? 0;
+  /* ads.banner: absent means ON (the app's rule) — only an explicit
+     false unticks the box. */
+  $("f_adBanner").checked = CFG.ads.banner !== false;
 }
 function itemRow(html){ const d = document.createElement("div"); d.className = "item"; d.innerHTML = html; return d; }
 function delBtn(fn){ const b = document.createElement("button"); b.className = "btn ghost small"; b.textContent = "✕"; b.addEventListener("click", fn); return b; }
@@ -319,55 +348,129 @@ function renderSponsors(){
 }
 $("addSponsor").addEventListener("click", () => { CFG.sponsors = CFG.sponsors || []; CFG.sponsors.push({company:"", title:"", text:"", btn:"Open", link:"https://", img:"", on:true}); renderSponsors(); });
 
+/* collect(): fold the form back into the LOADED config, in place.
+   Sections are never rebuilt from scratch — only the fields this
+   panel edits are written, onto the objects that were loaded — so
+   unknown keys anywhere in the file (sniperAssets, firebase's
+   messagingSenderId / storageBucket, anything added later) survive. */
 function collect(){
   CFG.appName = $("f_appName").value; CFG.tagline = $("f_tagline").value;
+  CFG.wallet = CFG.wallet || {};
   CFG.wallet.coinsPerRupee = Number($("f_coinsPerRupee").value); CFG.wallet.dailyBonusCoins = Number($("f_dailyBonus").value);
+  CFG.background = CFG.background || {};
   CFG.background.mode = $("f_bgMode").value; CFG.background.imageUrl = $("f_bgImage").value;
   CFG.background.gradient = [$("f_g1").value, $("f_g2").value];
+  CFG.wheel = CFG.wheel || {};
   CFG.wheel.freeSpinsPerDay = Number($("f_freeSpins").value); CFG.wheel.extraSpinPerAd = $("f_extraAd").value === "true";
-  CFG.dailyQuest = { enabled: $("f_questEnabled").checked, title: $("f_questTitle").value, bonusCoins: Number($("f_questBonus").value) };
-  CFG.challenge = { enabled: $("f_chalEnabled").checked, title: $("f_chalTitle").value, subtitle: $("f_chalSubtitle").value, freePerDay: Number($("f_chalFree").value) };
-  CFG.referral = { enabled: $("f_refEnabled").checked, welcomeBonus: Number($("f_refBonus").value) };
+  /* games, tasks, jobs, payouts and sponsors are edited live into CFG
+     by their renderers' inputs — nothing to collect for them */
+  CFG.dailyQuest = CFG.dailyQuest || {};
+  CFG.dailyQuest.enabled = $("f_questEnabled").checked; CFG.dailyQuest.title = $("f_questTitle").value; CFG.dailyQuest.bonusCoins = Number($("f_questBonus").value);
+  CFG.challenge = CFG.challenge || {};
+  CFG.challenge.enabled = $("f_chalEnabled").checked; CFG.challenge.title = $("f_chalTitle").value; CFG.challenge.subtitle = $("f_chalSubtitle").value; CFG.challenge.freePerDay = Number($("f_chalFree").value);
+  CFG.referral = CFG.referral || {};
+  CFG.referral.enabled = $("f_refEnabled").checked; CFG.referral.welcomeBonus = Number($("f_refBonus").value);
   CFG.jobsFeedUrl = $("f_jobsFeedUrl").value;
   CFG.payoutFormUrl = $("f_payoutFormUrl").value; CFG.supportWhatsapp = $("f_whatsapp").value; CFG.supportEmail = $("f_supportEmail").value;
-  CFG.firebase = { enabled: $("f_fbEnabled").checked, apiKey: $("f_fbApiKey").value.trim(), authDomain: $("f_fbAuthDomain").value.trim(), projectId: $("f_fbProjectId").value.trim(), appId: $("f_fbAppId").value.trim() };
-  CFG.banner = { on: $("f_bannerOn").checked, text: $("f_bannerText").value };
+  CFG.firebase = CFG.firebase || {};
+  CFG.firebase.enabled = $("f_fbEnabled").checked; CFG.firebase.apiKey = $("f_fbApiKey").value.trim(); CFG.firebase.authDomain = $("f_fbAuthDomain").value.trim(); CFG.firebase.projectId = $("f_fbProjectId").value.trim(); CFG.firebase.appId = $("f_fbAppId").value.trim();
+  CFG.banner = CFG.banner || {};
+  CFG.banner.on = $("f_bannerOn").checked; CFG.banner.text = $("f_bannerText").value;
   CFG.sponsorSecs = Number($("f_sponsorSecs").value) || 6;
-  /* sponsors are edited live into CFG by renderSponsors' inputs — nothing to collect */
   const bcBump = $("f_bcBump").checked;
   const bcVer = bcBump ? (window.__bcVer || 0) + 1 : (window.__bcVer || 0);
-  CFG.bc = { on: $("f_bcOn").checked, title: $("f_bcTitle").value, text: $("f_bcText").value, ver: bcVer };
+  CFG.bc = CFG.bc || {};
+  CFG.bc.on = $("f_bcOn").checked; CFG.bc.title = $("f_bcTitle").value; CFG.bc.text = $("f_bcText").value; CFG.bc.ver = bcVer;
   if (bcBump){ window.__bcVer = bcVer; $("bcVerNow").textContent = bcVer; $("f_bcBump").checked = false; }   // one-shot: the baseline moves up, so a second save in this session can never downgrade the version
-  CFG.notify = { on: $("f_notifyOn").checked, hour: Number($("f_notifyHour").value) || 8, texts: $("f_notifyTexts").value.split("\n").map(s => s.trim()).filter(Boolean) };
+  CFG.notify = CFG.notify || {};
+  CFG.notify.on = $("f_notifyOn").checked; CFG.notify.hour = Number($("f_notifyHour").value) || 8; CFG.notify.texts = $("f_notifyTexts").value.split("\n").map(s => s.trim()).filter(Boolean);
   CFG.terms = $("f_terms").value.split("\n").map(s => s.trim().replace(/^•\s*/, "")).filter(Boolean);
-  CFG.ads = { gapMinutes: Number($("f_adGap").value) || 0 };
+  CFG.ads = CFG.ads || {};
+  CFG.ads.gapMinutes = Number($("f_adGap").value) || 0;
+  /* ads.banner: an absent key already means ON in the app, so write it
+     only when it is already there, or the owner just switched it OFF —
+     an untouched config keeps its exact bytes either way. */
+  if ("banner" in CFG.ads || !$("f_adBanner").checked) CFG.ads.banner = $("f_adBanner").checked;
   return CFG;
 }
 
-/* ---------- config load safety (2026-11-09) ----------
-   The panel boots on blank DEFAULTS (1 wheel segment, 0 games). If the
-   live config fails to load — dead network, bad URL — those defaults
-   LOOK like a real config, and one Save/Download would wipe the live
-   config.json. So: (1) a config counts as loaded only after a fetch or
-   file read that validates (non-empty games list); (2) Save-to-GitHub
-   and Download are both BLOCKED until then; (3) a summary line shows
-   what was loaded, so the owner can SEE the load worked; (4) URL loads
-   retry once automatically after ~1.5s before giving up. */
-async function fetchCfg(url){
+function countsLine(){
+  const g = (CFG.games || []).length, w = (CFG.wheel && CFG.wheel.segments || []).length, p = (CFG.payouts || []).length;
+  return g + " games, " + w + " wheel segments, " + p + " payouts";
+}
+function showLoadSummary(routeName){
+  const el = $("loadSummary"); if (!el) return;
+  el.textContent = "Loaded ✓" + (routeName ? " via " + routeName : "") + " — " + countsLine();
+  el.style.display = "";
+}
+
+/* ---------- config load: multi-route + save safety ----------
+   (Multi-route added 2026-11-10; the guard below is the 2026-11-09
+   one, kept word for word.)
+   The panel boots on blank DEFAULTS (1 wheel segment, 0 games). If
+   the live config fails to load — dead network, bad URL — those
+   defaults LOOK like a real config, and one Save/Download would wipe
+   the live config.json. So: (1) a config counts as loaded only after
+   a fetch or file read that validates (non-empty games list);
+   (2) Save-to-GitHub and Download are both BLOCKED until then;
+   (3) a summary line shows what was loaded — and which route brought
+   it — so the owner can SEE the load worked; (4) every route retries
+   once automatically after ~1.5s before the next route is tried.
+   Routes, in order: (a) the Pages URL in the URL field; (b) the
+   jsDelivr CDN mirror of the same repo file; (c) the GitHub API
+   contents endpoint (base64-decoded; the Save token is sent if one
+   is filled in). (b) and (c) are tried only while the URL field
+   still holds the default Pages URL — a custom URL is tried alone. */
+const DEFAULT_CFG_URL = "https://paisajeeto.github.io/paisajeeto/config.json";
+const CDN_CFG_URL = "https://cdn.jsdelivr.net/gh/paisajeeto/paisajeeto@main/config.json";
+function validConfig(j){ return !!j && Array.isArray(j.games) && j.games.length > 0; }
+function b64ToUtf8(b64){
+  const bin = atob(String(b64).replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function utf8ToB64(s){ return btoa(unescape(encodeURIComponent(s))); }
+function loadRoutes(url){
+  const routes = [{ name: "Pages", kind: "url", target: url }];
+  if (url === DEFAULT_CFG_URL){
+    routes.push({ name: "CDN", kind: "url", target: CDN_CFG_URL });
+    routes.push({ name: "GitHub API", kind: "api" });
+  }
+  return routes;
+}
+async function fetchRouteOnce(route){
+  if (route.kind === "api"){
+    const owner = $("ghOwner").value.trim() || "paisajeeto", repo = $("ghRepo").value.trim() || "paisajeeto", path = $("ghPath").value.trim() || "config.json";
+    const hdr = { "Accept": "application/vnd.github+json" };
+    const tok = $("ghToken").value.trim();
+    if (tok) hdr["Authorization"] = "Bearer " + tok;
+    const r = await fetch("https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + path, { headers: hdr, cache: "no-store" });
+    if (!r.ok) throw new Error("GitHub API " + r.status);
+    const meta = await r.json();
+    if (!meta || !meta.content) throw new Error("GitHub API: no content");
+    const j = JSON.parse(b64ToUtf8(meta.content));
+    if (!validConfig(j)) throw new Error("bad config");
+    return j;
+  }
+  const r = await fetch(route.target, { cache: "no-store" });
+  const j = await r.json();
+  if (!validConfig(j)) throw new Error("bad config");
+  return j;
+}
+async function fetchRoute(route){
   for (let attempt = 0; attempt < 2; attempt++){
-    try {
-      const r = await fetch(url, { cache: "no-store" });
-      const j = await r.json();
-      if (!j || !Array.isArray(j.games) || !j.games.length) throw new Error("bad config");
-      return j;
-    } catch(e){ if (attempt === 1) throw e; await new Promise(res => setTimeout(res, 1500)); }
+    try { return await fetchRouteOnce(route); }
+    catch(e){ if (attempt === 1) throw e; await sleep(1500); }
   }
 }
-function showLoadSummary(){
-  const el = $("loadSummary"); if (!el) return;
-  const g = (CFG.games || []).length, w = (CFG.wheel && CFG.wheel.segments || []).length, p = (CFG.payouts || []).length;
-  el.textContent = "Loaded ✓ — " + g + " games, " + w + " wheel segments, " + p + " payouts";
-  el.style.display = "";
+async function fetchCfg(url){
+  let lastErr = null;
+  for (const route of loadRoutes(url)){
+    try { return { cfg: await fetchRoute(route), route: route.name }; }
+    catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error("load failed");
 }
 function cfgSaveGuard(){
   if (!window.__CFG_LOADED || !(CFG && CFG.games && CFG.games.length)){
@@ -377,24 +480,29 @@ function cfgSaveGuard(){
   return true;
 }
 
-$("loadUrl").addEventListener("click", async () => {
-  try { const j = await fetchCfg($("cfgUrl").value.trim()); fill(j); window.__CFG_LOADED = true; msg("Config loaded ✓"); showLoadSummary(); }
-  catch(e){ alert("Could not load that URL. Check it opens in your browser."); }
-});
+async function loadFromUrl(silent){
+  try {
+    const got = await fetchCfg($("cfgUrl").value.trim());
+    fill(got.cfg); window.__CFG_LOADED = true;
+    msg(silent ? "Live config loaded automatically ✓" : "Config loaded ✓");
+    showLoadSummary(got.route);
+  } catch(e){ if (!silent) alert("Could not load that URL. Check it opens in your browser."); }
+}
+$("loadUrl").addEventListener("click", () => loadFromUrl(false));
 $("loadFileBtn").addEventListener("click", () => $("loadFile").click());
 $("loadFile").addEventListener("change", e => {
   const f = e.target.files[0]; if (!f) return;
   f.text().then(t => {
     try {
       const j = JSON.parse(t);
-      if (!j || !Array.isArray(j.games) || !j.games.length) throw new Error("bad config");
-      fill(j); window.__CFG_LOADED = true; msg("File loaded ✓"); showLoadSummary();
+      if (!validConfig(j)) throw new Error("bad config");
+      fill(j); window.__CFG_LOADED = true; msg("File loaded ✓"); showLoadSummary("file");
     } catch(e){ alert("Ye file valid config nahi hai — games list khaali hai. Koi aur config file chuno, ya Load from URL dabao."); }
   });
 });
 $("download").addEventListener("click", () => {
   if (!cfgSaveGuard()) return;
-  const blob = new Blob([JSON.stringify(collect(), null, 2)], { type: "application/json" });
+  const blob = new Blob([serializeConfig(collect())], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "config.json"; a.click();
   msg("Downloaded — upload it to your repo/Pages to go live.");
 });
@@ -408,17 +516,18 @@ $("ghSave").addEventListener("click", async () => {
     let sha = null;
     const cur = await fetch(api, { headers: hdr });
     if (cur.ok) sha = (await cur.json()).sha;
-    const body = { message: "Update config via PaisaJeeto Admin", content: btoa(unescape(encodeURIComponent(JSON.stringify(collect(), null, 2)))) };
+    const body = { message: "Update config via PaisaJeeto Admin", content: utf8ToB64(serializeConfig(collect())) };
     if (sha) body.sha = sha;
     const res = await fetch(api, { method: "PUT", headers: hdr, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(await res.text());
-    msg("Saved to GitHub ✓ App updates in ~1 minute.");
+    msg("Saved to GitHub ✓ — " + countsLine() + ". App updates in ~1 minute.");
   } catch(e){ alert("GitHub save failed: " + e.message); }
 });
 
 fill(JSON.parse(JSON.stringify(DEFAULTS)));
-/* auto-load the live config on open so the panel never sits on blank defaults */
-(async () => { try { const j = await fetchCfg($("cfgUrl").value.trim()); fill(j); window.__CFG_LOADED = true; msg("Live config loaded automatically ✓"); showLoadSummary(); } catch(e){} })();
+/* auto-load the live config on open (same multi-route chain) so the
+   panel never sits on blank defaults */
+loadFromUrl(true);
 </script>
 </body>
 </html>
