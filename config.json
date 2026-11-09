@@ -472,9 +472,9 @@
   ],
   "potion-fill": [
    {
-    "flasks": 4,
-    "pour": 0.3,
-    "zone": 0.085
+    "flasks": 10,
+    "pour": 0.4,
+    "zone": 0.09
    },
    {
     "flasks": 5,
@@ -570,6 +570,11 @@
     "flasks": 6,
     "pour": 0.66,
     "zone": 0.018
+   },
+   {
+    "flasks": 8,
+    "pour": 0.5,
+    "zone": 0.04
    }
   ]
  }
