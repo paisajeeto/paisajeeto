@@ -73,7 +73,7 @@
   <div class="card"><h2>🧩 Levels — Dot Connect · Slide Puzzle · Potion Fill</h2>
     <p class="muted">Teeno level-wale games ke levels yahan JSON me hain — pehla entry = Level 1, dusra = Level 2, aise hi aage. <b>Naya level jodne ke liye list ke END me ek entry jodo aur Save karo — naya APK nahi lagega.</b> Box khaali chhodne se purane levels hi rahenge. Agar JSON gadbad hua to save ruk jayega — aur galat levels kabhi game ko nahi bigaad sakta, game apne built-in levels par chal jata hai.<br>
     <b>🔵 Dot Connect:</b> <span style="font-family:monospace">{"n": 6}</span> — n = grid ka size (4–8). Chaaho to <span style="font-family:monospace">"pairs": 5</span> bhi do — rangon ke kitne jode.<br>
-    <b>🧩 Slide Puzzle:</b> <span style="font-family:monospace">{"theme": "beach", "size": 4}</span> — theme in me se ek: hero, cozy, rain, beach, mountain, space, sea, desert, park; size 3 ya 4.<br>
+    <b>🧩 Slide Puzzle:</b> <span style="font-family:monospace">{"theme": "beach", "size": 4}</span> — theme in me se ek: hero, cozy, rain, beach, mountain, space, sea, desert, park; size 3 ya 4. <b>Apni tasveer wala level:</b> <span style="font-family:monospace">{"image": "images/puzzle-1.jpg", "size": 3}</span> — image = poora link ya repo wala path (images/ se shuru); theme dena optional hai — tasveer na mile to game theme wali drawing chala dega.<br>
     <b>🧪 Potion Fill:</b> <span style="font-family:monospace">{"flasks": 6, "pour": 0.4, "zone": 0.05}</span> — flasks = kitne flask, pour = daalne ki speed (zyada = tez), zone = nishaan wali patti ki chaudai (chhota number = zyada mushkil). Teenon me se koi ek ya do field bhi chalega — baaki purane hisaab se chalega.</p>
     <div id="lvlSummary" style="font-weight:600; margin:4px 0 8px"></div>
     <label>🔵 Dot Connect levels</label>
@@ -435,7 +435,12 @@ function validLevelsFor(id, a){
       if (!Number.isInteger(e.n) || e.n < 4 || e.n > 8) return false;
       if (e.pairs !== undefined && (!Number.isInteger(e.pairs) || e.pairs < 3 || e.pairs > Math.floor(e.n * e.n / 3))) return false;
     } else if (id === "slide-puzzle"){
-      if (!SLIDE_THEMES.includes(e.theme)) return false;
+      /* Theme form ya apni tasveer (image) form — dono chalenge.
+         Image ho to theme optional hai (tasveer fail ho to game theme
+         wali drawing par aa jata hai). Game ki validation se mirror. */
+      const hasImage = typeof e.image === "string" && e.image.trim().length > 0;
+      if (!hasImage && !SLIDE_THEMES.includes(e.theme)) return false;
+      if (e.image !== undefined && !hasImage) return false;
       if (e.size !== 3 && e.size !== 4) return false;
     } else if (id === "potion-fill"){
       if (e.flasks !== undefined && (!Number.isInteger(e.flasks) || e.flasks < 1 || e.flasks > 10)) return false;

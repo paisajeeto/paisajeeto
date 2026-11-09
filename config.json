@@ -468,13 +468,17 @@
    {
     "theme": "park",
     "size": 3
+   },
+   {
+    "image": "images/puzzle-demo.jpg",
+    "size": 3
    }
   ],
   "potion-fill": [
    {
-    "flasks": 10,
-    "pour": 0.4,
-    "zone": 0.09
+    "flasks": 4,
+    "pour": 0.3,
+    "zone": 0.085
    },
    {
     "flasks": 5,
