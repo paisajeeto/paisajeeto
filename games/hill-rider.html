@@ -27,6 +27,31 @@
   .btn { display:inline-block; border:none; cursor:pointer; font-weight:800; border-radius:14px; padding:14px 26px; font-size:17px; background:linear-gradient(135deg,#69b44c,#2b8a3e); color:#fff; box-shadow:0 5px 14px rgba(0,0,0,.35); }
   .btn:active { transform:scale(.96); }
   .hidden { display:none !important; }
+
+  /* Tutorial hand hint (owner, 2026-11-10): a looping hand overlay that
+     demonstrates this game's primary input — the same help Bag Toss has
+     always drawn for its throw. It never blocks input (pointer-events:
+     none), shows from the start screen, hides for the rest of a run on
+     the player's first meaningful input, and comes back on a new run
+     only when the previous run had fewer than 3 inputs (the player is
+     still learning). hhRunStart() is called by the game's own start
+     function; visibility is the .hhOn class. */
+  #handHint { position:fixed; z-index:60; pointer-events:none; display:none; font-size:56px; line-height:1; left:50%; margin-left:-28px; top:62%; filter:drop-shadow(0 3px 6px rgba(0,0,0,.55)); will-change:transform; }
+  #handHint.hhOn { display:block; }
+  #handHint.hhTap { animation:hhTapK 1.15s ease-in-out infinite; }
+  @keyframes hhTapK { 0%,100% { transform:translateY(0) scale(1); } 35% { transform:translateY(10px) scale(.86); } 55% { transform:translateY(10px) scale(.86); } }
+  #handHint.hhHold { animation:hhHoldK 1.9s ease-in-out infinite; }
+  @keyframes hhHoldK { 0%,100% { transform:translateY(0); } 22% { transform:translateY(12px); } 68% { transform:translateY(12px); } }
+  #handHint.hhSteer { animation:hhSteerK 1.7s ease-in-out infinite alternate; }
+  @keyframes hhSteerK { from { transform:translateX(-48px); } to { transform:translateX(48px); } }
+  #handHint.hhDrag { top:auto; bottom:15%; animation:hhSteerK 1.6s ease-in-out infinite alternate; }
+  #handHint.hhTrace { animation:hhTraceK 2.2s linear infinite; }
+  @keyframes hhTraceK { 0% { transform:translate(0,0); } 25% { transform:translate(30px,-10px); } 50% { transform:translate(4px,-26px); } 75% { transform:translate(-28px,-10px); } 100% { transform:translate(0,0); } }
+  #handHint.hhPull { left:20%; margin-left:0; top:54%; animation:hhPullK 1.8s ease-in-out infinite; }
+  @keyframes hhPullK { 0%,100% { transform:translate(0,0); } 45% { transform:translate(-32px,44px); } 60% { transform:translate(-32px,44px); } 74% { transform:translate(6px,-6px); } }
+  #handHint.hhConnect { animation:hhConnectK 2s ease-in-out infinite; }
+  @keyframes hhConnectK { 0%,100% { transform:translateX(-54px); } 12% { transform:translateX(-54px); } 55% { transform:translateX(54px); } 70% { transform:translateX(54px); } }
+  #handHint.hhRight { left:auto; right:11%; margin-left:0; }
 </style>
 </head>
 <body>
@@ -239,6 +264,7 @@ function burst(x, y, n, colors, spd) {
 }
 function popup(x, y, txt, color) { pops.push({ x: x, y: y, txt: txt, t: 0, c: color || '#ffd94d' }); }
 function startCountdown() {
+  if (typeof hhRunStart === 'function') hhRunStart();   // tutorial hand: a new run begins
   reset();
   state = 'count'; countT = 0; lastCount = 4;
   document.getElementById('startPanel').classList.add('hidden');
@@ -834,6 +860,23 @@ document.addEventListener('visibilitychange', function () {
 
 resize(); reset();
 requestAnimationFrame(loop);
+</script>
+<div id="handHint" class="hhOn hhHold hhRight">👇</div>
+
+<script>
+/* Tutorial hand hint observer (owner, 2026-11-10): passive listeners
+   only — the game's own input handlers are untouched. A pointerdown
+   anywhere except on a UI button/panel counts as a meaningful input,
+   as do Space/arrow keys. The first input of a run hides the hand for
+   the rest of that run; hhRunStart() (called from the game's start
+   function) opens a new run and re-shows the hand only if the
+   previous run had fewer than 3 inputs. */
+var hhEl = document.getElementById('handHint');
+var hhInputs = 0, hhLive = false;
+function hhRunStart(){ var prev = hhInputs; hhInputs = 0; hhLive = true; if (hhEl) hhEl.classList.toggle('hhOn', prev < 3); }
+function hhNoteInput(){ if (!hhLive) return; hhInputs++; if (hhEl) hhEl.classList.remove('hhOn'); }
+document.addEventListener('pointerdown', function (e) { var t = e.target; if (t && t.closest && t.closest('button, .panel, input, select, a')) return; hhNoteInput(); }, true);
+document.addEventListener('keydown', function (e) { if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) hhNoteInput(); }, true);
 </script>
 </body>
 </html>

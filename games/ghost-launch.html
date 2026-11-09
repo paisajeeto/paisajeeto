@@ -27,6 +27,31 @@
   .btn { display:inline-block; border:none; cursor:pointer; font-weight:800; border-radius:14px; padding:14px 26px; font-size:17px; background:linear-gradient(135deg,#b197fc,#7048e8); color:#fff; box-shadow:0 5px 14px rgba(0,0,0,.35); }
   .btn:active { transform:scale(.96); }
   .hidden { display:none !important; }
+
+  /* Tutorial hand hint (owner, 2026-11-10): a looping hand overlay that
+     demonstrates this game's primary input — the same help Bag Toss has
+     always drawn for its throw. It never blocks input (pointer-events:
+     none), shows from the start screen, hides for the rest of a run on
+     the player's first meaningful input, and comes back on a new run
+     only when the previous run had fewer than 3 inputs (the player is
+     still learning). hhRunStart() is called by the game's own start
+     function; visibility is the .hhOn class. */
+  #handHint { position:fixed; z-index:60; pointer-events:none; display:none; font-size:56px; line-height:1; left:50%; margin-left:-28px; top:62%; filter:drop-shadow(0 3px 6px rgba(0,0,0,.55)); will-change:transform; }
+  #handHint.hhOn { display:block; }
+  #handHint.hhTap { animation:hhTapK 1.15s ease-in-out infinite; }
+  @keyframes hhTapK { 0%,100% { transform:translateY(0) scale(1); } 35% { transform:translateY(10px) scale(.86); } 55% { transform:translateY(10px) scale(.86); } }
+  #handHint.hhHold { animation:hhHoldK 1.9s ease-in-out infinite; }
+  @keyframes hhHoldK { 0%,100% { transform:translateY(0); } 22% { transform:translateY(12px); } 68% { transform:translateY(12px); } }
+  #handHint.hhSteer { animation:hhSteerK 1.7s ease-in-out infinite alternate; }
+  @keyframes hhSteerK { from { transform:translateX(-48px); } to { transform:translateX(48px); } }
+  #handHint.hhDrag { top:auto; bottom:15%; animation:hhSteerK 1.6s ease-in-out infinite alternate; }
+  #handHint.hhTrace { animation:hhTraceK 2.2s linear infinite; }
+  @keyframes hhTraceK { 0% { transform:translate(0,0); } 25% { transform:translate(30px,-10px); } 50% { transform:translate(4px,-26px); } 75% { transform:translate(-28px,-10px); } 100% { transform:translate(0,0); } }
+  #handHint.hhPull { left:20%; margin-left:0; top:54%; animation:hhPullK 1.8s ease-in-out infinite; }
+  @keyframes hhPullK { 0%,100% { transform:translate(0,0); } 45% { transform:translate(-32px,44px); } 60% { transform:translate(-32px,44px); } 74% { transform:translate(6px,-6px); } }
+  #handHint.hhConnect { animation:hhConnectK 2s ease-in-out infinite; }
+  @keyframes hhConnectK { 0%,100% { transform:translateX(-54px); } 12% { transform:translateX(-54px); } 55% { transform:translateX(54px); } 70% { transform:translateX(54px); } }
+  #handHint.hhRight { left:auto; right:11%; margin-left:0; }
 </style>
 </head>
 <body>
@@ -220,6 +245,7 @@ function burst(x, y, n, colors, spd) {
 function popup(x, y, txt, color) { pops.push({ x: x, y: y, txt: txt, t: 0, c: color || '#ffd94d' }); }
 
 function startCountdown() {
+  if (typeof hhRunStart === 'function') hhRunStart();   // tutorial hand: a new run begins
   reset();
   state = 'play';
   document.getElementById('startPanel').classList.add('hidden');
@@ -379,11 +405,61 @@ function endFlight() {
   sub = 'settle'; settleT = 1.05;
   updateHud();
 }
+/* Score a target as DOWN with the same popup/burst/sound as a mid-flight
+   knock (checkDown only scores objects while physics is still moving). */
+function markDown(o) {
+  if (o.down) return;
+  o.down = true; downThisLaunch++; downTotal++;
+  score += o.pts;
+  popup(o.x, o.y - o.h / 2 - 14, '+' + o.pts, o.kind === 'p' ? '#ffa94d' : '#ced4da');
+  burst(o.x, o.y, 8, o.kind === 'p' ? ['#ff922b', '#ffa94d'] : ['#ced4da', '#f1f3f5'], 150);
+  sfxDing(downThisLaunch);
+}
+/* Runs once per shot, after the flight and settle have fully resolved:
+   any target that ended up off the platform (on the ground), on its side,
+   or knocked well away from its slot counts as DOWN wherever it landed. */
+function finalDownSweep() {
+  for (var i = 0; i < objs.length; i++) {
+    var o = objs[i];
+    if (o.down) continue;
+    var atGround = o.y + o.h / 2 >= groundY() - 2;
+    if (atGround || Math.abs(o.ang) > 0.75 || (o.y - o.oy) > 18 || Math.abs(o.x - o.ox) > 34) markDown(o);
+  }
+}
+/* Re-rack: surviving targets are put back into the current layout's clean
+   slot positions (kinds matched slot-for-slot, physics state reset), and
+   knocked-down targets are cleared off the platform — so after a missed
+   shot the player faces a tidy stack again, not a heap. */
+function rerack() {
+  var lay = LAYOUTS[layoutIdx % LAYOUTS.length];
+  var surv = { p: [], t: [] };
+  for (var i = 0; i < objs.length; i++) if (!objs[i].down) surv[objs[i].kind].push(objs[i]);
+  var kept = [];
+  for (var s = 0; s < lay.length; s++) {
+    var kind = lay[s][0];
+    var o = surv[kind].shift();
+    if (!o) continue;
+    var dim = kind === 'p' ? PUMP : TOMB;
+    var cxp = centreX() + lay[s][1] * 1.3 * Math.min(1.0, W / 400);
+    var bottom = platTop() - lay[s][2] * 1.3;
+    o.x = cxp; o.y = bottom - dim.h / 2; o.ox = o.x; o.oy = o.y;
+    o.ang = 0; o.vx = 0; o.vy = 0; o.va = 0; o.dyn = false; o.sleep = 0;
+    kept.push(o);
+  }
+  // defensive: a survivor with no matching slot keeps its spot, parked
+  for (var k in surv) for (var j = 0; j < surv[k].length; j++) {
+    var lo = surv[k][j];
+    lo.vx = 0; lo.vy = 0; lo.va = 0; lo.dyn = false; lo.sleep = 0;
+    kept.push(lo);
+  }
+  objs = kept;
+}
 function nextLaunch() {
+  finalDownSweep();   // settle-time downs count too, wherever they landed
   var allDown = objs.length > 0;
   for (var i = 0; i < objs.length; i++) if (!objs[i].down) allDown = false;
   if (CHALLENGE) {
-    // One layout only: full clear = WIN, out of ghosts = DEFEAT, otherwise keep aiming at the same stack.
+    // One layout only: full clear = WIN, out of ghosts = DEFEAT, otherwise re-rack the survivors and keep aiming at the same stack.
     if (allDown) {
       score += 5;
       popup(W / 2, H * 0.34, 'ALL DOWN! +5 ⭐', '#ffd94d');
@@ -394,6 +470,7 @@ function nextLaunch() {
     } else if (launchesLeft <= 0) {
       challengeGameOver(false);
     } else {
+      rerack();
       placeGhost(); sub = 'aim'; dragPt = null;
       updateHud();
     }
@@ -407,10 +484,16 @@ function nextLaunch() {
     updateHud();
   }
   if (launchesLeft <= 0) { gameOver(); return; }
-  layoutIdx++;
-  platOff = (Math.random() * 2 - 1) * W * 0.07;
-  buildStack(); placeGhost();
-  targetsTotal += objs.length;
+  if (allDown) {
+    // layout cleared: move on to a fresh stack
+    layoutIdx++;
+    platOff = (Math.random() * 2 - 1) * W * 0.07;
+    buildStack(); placeGhost();
+    targetsTotal += objs.length;
+  } else {
+    // targets still standing: tidy the survivors back into place and shoot again
+    rerack(); placeGhost();
+  }
   sub = 'aim'; dragPt = null;
   updateHud();
 }
@@ -869,6 +952,23 @@ if (CHALLENGE) {
 
 resize(); reset();
 requestAnimationFrame(loop);
+</script>
+<div id="handHint" class="hhOn hhPull">👆</div>
+
+<script>
+/* Tutorial hand hint observer (owner, 2026-11-10): passive listeners
+   only — the game's own input handlers are untouched. A pointerdown
+   anywhere except on a UI button/panel counts as a meaningful input,
+   as do Space/arrow keys. The first input of a run hides the hand for
+   the rest of that run; hhRunStart() (called from the game's start
+   function) opens a new run and re-shows the hand only if the
+   previous run had fewer than 3 inputs. */
+var hhEl = document.getElementById('handHint');
+var hhInputs = 0, hhLive = false;
+function hhRunStart(){ var prev = hhInputs; hhInputs = 0; hhLive = true; if (hhEl) hhEl.classList.toggle('hhOn', prev < 3); }
+function hhNoteInput(){ if (!hhLive) return; hhInputs++; if (hhEl) hhEl.classList.remove('hhOn'); }
+document.addEventListener('pointerdown', function (e) { var t = e.target; if (t && t.closest && t.closest('button, .panel, input, select, a')) return; hhNoteInput(); }, true);
+document.addEventListener('keydown', function (e) { if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) hhNoteInput(); }, true);
 </script>
 </body>
 </html>
