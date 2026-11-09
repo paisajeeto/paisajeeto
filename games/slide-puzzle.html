@@ -638,6 +638,7 @@ function drawCityPark(g) {
 var SCENES = { hero: drawHeroCity, cozy: drawCozyNight, rain: drawRainyStreet, beach: drawSunsetBeach, mountain: drawMountainCabin, space: drawSpaceRocket, sea: drawUnderwater, desert: drawDesertOasis, park: drawCityPark };
 var THEME_NAMES = { hero: '🦸 Hero City', cozy: '🏠 Cozy Night', rain: '🌧 Rainy Street', beach: '🏖 Sunset Beach', mountain: '🏔 Mountain Cabin', space: '🚀 Space Rocket', sea: '🐠 Underwater', desert: '🌴 Desert Oasis', park: '🌳 City Park' };
 function renderPicture(theme) {
+  window.__pjPicKind = 'theme';
   picCtx.clearRect(0, 0, 720, 720);
   SCENES[theme](picCtx);
   var pv = document.getElementById('previewCv').getContext('2d');
@@ -645,10 +646,85 @@ function renderPicture(theme) {
   pv.drawImage(PIC, 0, 0, 264, 264);
 }
 
+/* ============ Custom level pictures (owner, 2026-11-10) ============
+   A level entry may carry an "image" (a full http(s) URL, or a path
+   resolved against the Pages base) instead of / alongside a theme.
+   The image is loaded with CORS, cover-cropped onto the 720x720
+   picture canvas and sliced into tiles exactly like a drawn scene —
+   board, preview, level-map thumbnail and the solved picture all
+   come from it. If the image fails for ANY reason (offline, 404,
+   CORS), the level silently falls back to its theme art (the entry's
+   theme, or 'hero') — a bad image can never break a level.
+   window.__pjPicKind records what the current picture actually is
+   ('image' | 'theme') for diagnostics/tests. */
+var PJ_PAGES_BASE = 'https://paisajeeto.github.io/paisajeeto/';
+window.__pjPicKind = 'theme';
+function levelThemeOf(e) { return (e && Object.prototype.hasOwnProperty.call(SCENES, e.theme)) ? e.theme : 'hero'; }
+function levelLabelOf(e) {
+  var base = THEME_NAMES[levelThemeOf(e)].replace(/^\S+\s/, '');
+  return (e && e.image) ? base + ' 🖼' : base;
+}
+function curPicName() { return selImage ? '🖼 Custom Picture' : THEME_NAMES[selTheme]; }
+function pjResolveImg(u) {
+  u = String(u);
+  if (/^https?:\/\//i.test(u)) return u;
+  return PJ_PAGES_BASE + u.replace(/^\/+/, '');
+}
+var pjImgCache = {}, pjImgPending = {};
+function pjLoadLevelImage(u, cb) {
+  var key = pjResolveImg(u);
+  if (pjImgCache[key]) { cb(pjImgCache[key]); return; }
+  if (pjImgPending[key]) { pjImgPending[key].push(cb); return; }
+  pjImgPending[key] = [cb];
+  var done = function (cv2) {
+    var cbs = pjImgPending[key] || [];
+    delete pjImgPending[key];
+    if (cv2) pjImgCache[key] = cv2;
+    for (var i = 0; i < cbs.length; i++) { try { cbs[i](cv2); } catch (e) {} }
+  };
+  try {
+    var im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = function () {
+      try {
+        var iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+        if (!iw || !ih) { done(null); return; }
+        var c = document.createElement('canvas'); c.width = 720; c.height = 720;
+        var g = c.getContext('2d');
+        var s = Math.max(720 / iw, 720 / ih), dw = iw * s, dh = ih * s;
+        g.drawImage(im, (720 - dw) / 2, (720 - dh) / 2, dw, dh);
+        done(c);
+      } catch (e) { done(null); }
+    };
+    im.onerror = function () { done(null); };
+    im.src = key;
+  } catch (e) { done(null); }
+}
+var pjPicSeq = 0;
+function pjPaintPic(srcCanvas) {
+  picCtx.clearRect(0, 0, 720, 720);
+  picCtx.drawImage(srcCanvas, 0, 0);
+  var pv = document.getElementById('previewCv').getContext('2d');
+  pv.clearRect(0, 0, 264, 264);
+  pv.drawImage(PIC, 0, 0, 264, 264);
+}
+function showPicture(e) {
+  var seq = ++pjPicSeq;
+  renderPicture(levelThemeOf(e));      // fallback art is on screen at once
+  if (e && e.image) {
+    pjLoadLevelImage(e.image, function (cv2) {
+      if (!cv2 || seq !== pjPicSeq) return;   // stale request or failed load: theme art stays
+      pjPaintPic(cv2);
+      window.__pjPicKind = 'image';
+    });
+  }
+}
+
 /* ============ Game state ============ */
 var state = 'menu'; // menu | play | won
 var time = 0;
 var selTheme = 'hero', selSize = 3;
+var selImage = null; // custom picture of the current level (config "image"), or null
 
 /* ============ Campaign ============ */
 var LEVELS = [
@@ -676,7 +752,7 @@ function campaignCap() {
   if (campaignDoneDay === slideTodayStr()) return Math.max(1, campaignUnlocked - 1);
   return campaignUnlocked;
 }
-function nextPictureLockedToday() { return campaignDoneDay === slideTodayStr() && campaignUnlocked <= 9 && campaignUnlocked > campaignCap(); }
+function nextPictureLockedToday() { return campaignDoneDay === slideTodayStr() && campaignUnlocked <= LEVELS.length && campaignUnlocked > campaignCap(); }
 var thumbSrc = {};
 function sceneCanvas(theme) {
   if (!thumbSrc[theme]) {
@@ -720,7 +796,7 @@ function shuffle() {
 function startPuzzle() {
   if (typeof hhRunStart === 'function') hhRunStart();   // tutorial hand: a new run begins
   n = selSize;
-  renderPicture(selTheme);
+  showPicture({ theme: selTheme, size: selSize, image: selImage });
   shuffle();
   moves = 0; playTime = 0; started = false; anim = null; pendingWin = false; scoreSent = false; sel = -1;
   state = 'play';
@@ -731,7 +807,8 @@ function startPuzzle() {
 function startLevel(lvl) {
   if (lvl > campaignCap()) { showMenu(); return; }   // DAILY-LOCK: next picture unlocks tomorrow (menu banner says so)
   curLevel = lvl; mode = 'campaign';
-  selTheme = LEVELS[lvl - 1].theme; selSize = LEVELS[lvl - 1].size;
+  var e = LEVELS[lvl - 1];
+  selTheme = levelThemeOf(e); selSize = e.size; selImage = e.image || null;
   startPuzzle();
 }
 function startMix() {
@@ -739,11 +816,14 @@ function startMix() {
   var keys = Object.keys(SCENES);
   selTheme = keys[Math.floor(Math.random() * keys.length)];
   selSize = Math.random() < 0.5 ? 3 : 4;
+  selImage = null;
   startPuzzle();
 }
 function renderLevelMap() {
   var map = document.getElementById('levelMap');
   map.innerHTML = '';
+  var subEl = document.querySelector('#menuPanel .sub');
+  if (subEl) subEl.innerHTML = 'Complete all ' + LEVELS.length + ' pictures to finish the campaign!<br>Tap two tiles to swap them and rebuild the picture.';
   for (var i = 0; i < LEVELS.length; i++) {
     (function (lvl) {
       var d = LEVELS[lvl - 1];
@@ -756,12 +836,14 @@ function renderLevelMap() {
       else { badge = '🔒'; cls = ' locked'; }
       node.className += cls;
       var tc = document.createElement('canvas'); tc.width = 144; tc.height = 144;
-      tc.getContext('2d').drawImage(sceneCanvas(d.theme), 0, 0, 144, 144);
+      var tctx = tc.getContext('2d');
+      tctx.drawImage(sceneCanvas(levelThemeOf(d)), 0, 0, 144, 144);
+      if (d.image) pjLoadLevelImage(d.image, function (cv2) { if (cv2) { tctx.clearRect(0, 0, 144, 144); tctx.drawImage(cv2, 0, 0, 144, 144); } });
       node.appendChild(tc);
       var st = document.createElement('div'); st.className = 'st'; st.textContent = badge;
       node.appendChild(st);
       var ln = document.createElement('div'); ln.className = 'ln';
-      ln.textContent = 'L' + lvl + ' · ' + THEME_NAMES[d.theme].replace(/^\S+\s/, '') + ' ' + d.size + '×' + d.size;
+      ln.textContent = 'L' + lvl + ' · ' + levelLabelOf(d) + ' ' + d.size + '×' + d.size;
       node.appendChild(ln);
       if (lvl <= cap) node.addEventListener('click', function () { ac(); sfxClick(); startLevel(lvl); });
       map.appendChild(node);
@@ -769,7 +851,7 @@ function renderLevelMap() {
   }
   var done = campaignComplete();
   document.getElementById('campaignBanner').textContent = done ? '🏆 Campaign Complete!' : (nextPictureLockedToday() ? '🗓 Today\'s picture done — next picture unlocks tomorrow' : 'Campaign · Level ' + campaignUnlocked + ' of ' + LEVELS.length);
-  document.getElementById('previewLabel').textContent = done ? '🏆 ALL 9 PICTURES DONE' : 'LEVEL ' + campaignUnlocked + ' PICTURE';
+  document.getElementById('previewLabel').textContent = done ? '🏆 ALL ' + LEVELS.length + ' PICTURES DONE' : 'LEVEL ' + campaignUnlocked + ' PICTURE';
   var sb = document.getElementById('startBtn');
   if (done) { sb.classList.add('hidden'); document.getElementById('mixBtn').classList.remove('hidden'); }
   else if (nextPictureLockedToday()) { sb.classList.remove('hidden'); sb.textContent = '🔒 Next picture unlocks tomorrow'; document.getElementById('mixBtn').classList.add('hidden'); }
@@ -780,7 +862,7 @@ function showMenu() {
   document.getElementById('wonPanel').classList.add('hidden');
   document.getElementById('menuPanel').classList.remove('hidden');
   renderLevelMap();
-  renderPicture(LEVELS[Math.min(campaignUnlocked, LEVELS.length) - 1].theme);
+  showPicture(LEVELS[Math.min(campaignUnlocked, LEVELS.length) - 1]);
 }
 function fmtTime(s) {
   s = Math.floor(s);
@@ -821,7 +903,7 @@ function doTimeout() {
   document.getElementById('nextBtn').classList.add('hidden');
   document.getElementById('wonTitle').textContent = '⏰ Time up!';
   document.getElementById('finalScore').textContent = score;
-  document.getElementById('wonStats').innerHTML = THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>' + correct + ' of ' + (n * n) + ' tiles in place × 2 pts<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
+  document.getElementById('wonStats').innerHTML = curPicName() + ' · ' + n + '×' + n + '<br>' + correct + ' of ' + (n * n) + ' tiles in place × 2 pts<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
   document.getElementById('wonPanel').classList.remove('hidden');
   updateHud();
 }
@@ -840,13 +922,13 @@ function doWin() {
   if (mode === 'campaign') {
     if (curLevel >= campaignUnlocked && campaignUnlocked < LEVELS.length + 1) { campaignUnlocked = curLevel + 1; saveCampaign(); campaignDoneDay = slideTodayStr(); saveCampaignDay(); }   // DAILY-LOCK: one picture per day
     document.getElementById('wonTitle').textContent = '🎉 Level ' + curLevel + ' complete!';
-    stats = 'Level ' + curLevel + ' · ' + THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
+    stats = 'Level ' + curLevel + ' · ' + curPicName() + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
     if (curLevel === LEVELS.length) stats += '<br>🏆 Campaign Complete! Random Mix is unlocked on the map!';
     else if (nextPictureLockedToday()) stats += '<br>🗓 Next picture unlocks tomorrow — come back then!';
     document.getElementById('nextBtn').classList.toggle('hidden', curLevel >= LEVELS.length || (curLevel + 1) > campaignCap());
   } else {
     document.getElementById('wonTitle').textContent = '🎉 Picture Complete!';
-    stats = '🔀 Random Mix · ' + THEME_NAMES[selTheme] + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
+    stats = '🔀 Random Mix · ' + curPicName() + ' · ' + n + '×' + n + '<br>Moves: ' + moves + ' · Time: ' + fmtTime(playTime) + '<br>Best score: ' + best;
     document.getElementById('nextBtn').classList.add('hidden');
   }
   document.getElementById('finalScore').textContent = score;
@@ -1001,22 +1083,24 @@ document.addEventListener('visibilitychange', function () { lastT = 0; });
 
 resize();
 curLevel = Math.min(campaignUnlocked, LEVELS.length);
-selTheme = LEVELS[curLevel - 1].theme; selSize = LEVELS[curLevel - 1].size;
+selTheme = levelThemeOf(LEVELS[curLevel - 1]); selSize = LEVELS[curLevel - 1].size; selImage = LEVELS[curLevel - 1].image || null;
 board = solvedBoard(); n = selSize;
-renderPicture(selTheme);
+showPicture(LEVELS[curLevel - 1]);
 renderLevelMap();
 updateHud();
 requestAnimationFrame(loop);
 
 /* ============ Config-driven levels (owner, 2026-11-10) ============
    The live config may carry levels['slide-puzzle'] — campaign entries
-   in this game's own format ({theme, size} per picture). When present
-   and EVERY entry validates (theme must be one of this game's scenes,
-   size 3 or 4), the list replaces the built-in LEVELS and the map is
-   re-rendered; anything else (offline, missing key, one bad entry)
-   silently keeps the built-ins, so a bad config can never break the
-   game. Applied only from the menu — a puzzle in progress is never
-   swapped under the player. */
+   in this game's own format ({theme, size} per picture, or a custom
+   picture {image, size} with the theme optional). When present and
+   EVERY entry validates (size 3 or 4, and either a non-empty image
+   string or a theme that is one of this game's scenes), the list
+   replaces the built-in LEVELS and the map is re-rendered; anything
+   else (offline, missing key, one bad entry) silently keeps the
+   built-ins, so a bad config can never break the game. Applied only
+   from the menu — a puzzle in progress is never swapped under the
+   player. */
 var PJ_CFG_URL = 'https://paisajeeto.github.io/paisajeeto/config.json';
 window.__pjLevelsSource = 'builtin';
 function pjValidSlideLevels(a) {
@@ -1024,7 +1108,8 @@ function pjValidSlideLevels(a) {
   for (var i = 0; i < a.length; i++) {
     var e = a[i];
     if (!e || typeof e !== 'object' || Array.isArray(e)) return false;
-    if (!Object.prototype.hasOwnProperty.call(SCENES, e.theme)) return false;
+    var hasImage = typeof e.image === 'string' && e.image.length > 0;
+    if (!hasImage && !Object.prototype.hasOwnProperty.call(SCENES, e.theme)) return false;
     if (e.size !== 3 && e.size !== 4) return false;
   }
   return true;
@@ -1034,7 +1119,7 @@ function pjApplySlideLevels(a) {
   LEVELS = a;
   if (campaignUnlocked > LEVELS.length + 1) { campaignUnlocked = LEVELS.length + 1; saveCampaign(); }
   curLevel = Math.min(campaignUnlocked, LEVELS.length);
-  selTheme = LEVELS[curLevel - 1].theme; selSize = LEVELS[curLevel - 1].size;
+  selTheme = levelThemeOf(LEVELS[curLevel - 1]); selSize = LEVELS[curLevel - 1].size; selImage = LEVELS[curLevel - 1].image || null;
   n = selSize; board = solvedBoard();
   window.__pjLevelsSource = 'config';
   showMenu();
