@@ -70,6 +70,23 @@
     <button class="btn ghost small" id="addGame">+ Add game</button>
   </div>
 
+  <div class="card"><h2>🧩 Levels — Dot Connect · Slide Puzzle · Potion Fill</h2>
+    <p class="muted">Teeno level-wale games ke levels yahan JSON me hain — pehla entry = Level 1, dusra = Level 2, aise hi aage. <b>Naya level jodne ke liye list ke END me ek entry jodo aur Save karo — naya APK nahi lagega.</b> Box khaali chhodne se purane levels hi rahenge. Agar JSON gadbad hua to save ruk jayega — aur galat levels kabhi game ko nahi bigaad sakta, game apne built-in levels par chal jata hai.<br>
+    <b>🔵 Dot Connect:</b> <span style="font-family:monospace">{"n": 6}</span> — n = grid ka size (4–8). Chaaho to <span style="font-family:monospace">"pairs": 5</span> bhi do — rangon ke kitne jode.<br>
+    <b>🧩 Slide Puzzle:</b> <span style="font-family:monospace">{"theme": "beach", "size": 4}</span> — theme in me se ek: hero, cozy, rain, beach, mountain, space, sea, desert, park; size 3 ya 4.<br>
+    <b>🧪 Potion Fill:</b> <span style="font-family:monospace">{"flasks": 6, "pour": 0.4, "zone": 0.05}</span> — flasks = kitne flask, pour = daalne ki speed (zyada = tez), zone = nishaan wali patti ki chaudai (chhota number = zyada mushkil). Teenon me se koi ek ya do field bhi chalega — baaki purane hisaab se chalega.</p>
+    <div id="lvlSummary" style="font-weight:600; margin:4px 0 8px"></div>
+    <label>🔵 Dot Connect levels</label>
+    <textarea id="lv_dot" rows="7" spellcheck="false"></textarea>
+    <div style="margin-top:6px"><button class="btn ghost small" id="lvDotCheck">✓ Validate Dot Connect</button> <span id="lv_dot_msg" style="font-size:13px"></span></div>
+    <label>🧩 Slide Puzzle levels</label>
+    <textarea id="lv_slide" rows="7" spellcheck="false"></textarea>
+    <div style="margin-top:6px"><button class="btn ghost small" id="lvSlideCheck">✓ Validate Slide Puzzle</button> <span id="lv_slide_msg" style="font-size:13px"></span></div>
+    <label>🧪 Potion Fill levels</label>
+    <textarea id="lv_potion" rows="7" spellcheck="false"></textarea>
+    <div style="margin-top:6px"><button class="btn ghost small" id="lvPotionCheck">✓ Validate Potion Fill</button> <span id="lv_potion_msg" style="font-size:13px"></span></div>
+  </div>
+
   <div class="card"><h2>✅ Tasks / offers</h2>
     <div id="taskList"></div>
     <button class="btn ghost small" id="addTask">+ Add task</button>
@@ -259,6 +276,7 @@ function fill(c){
   /* ads.banner: absent means ON (the app's rule) — only an explicit
      false unticks the box. */
   $("f_adBanner").checked = CFG.ads.banner !== false;
+  renderLevels();
 }
 function itemRow(html){ const d = document.createElement("div"); d.className = "item"; d.innerHTML = html; return d; }
 function delBtn(fn){ const b = document.createElement("button"); b.className = "btn ghost small"; b.textContent = "✕"; b.addEventListener("click", fn); return b; }
@@ -391,7 +409,98 @@ function collect(){
      only when it is already there, or the owner just switched it OFF —
      an untouched config keeps its exact bytes either way. */
   if ("banner" in CFG.ads || !$("f_adBanner").checked) CFG.ads.banner = $("f_adBanner").checked;
+  collectLevels();
   return CFG;
+}
+
+/* ---------- Levels (2026-11-10): config.levels for the three
+   level-based games (Dot Connect, Slide Puzzle, Potion Fill). Each
+   textarea holds that game's level list as JSON — first entry =
+   Level 1. Validation mirrors the games' own structural checks
+   exactly; a non-blank box that fails validation BLOCKS every save
+   (the games would ignore a bad list anyway and play their built-in
+   levels, but a broken edit should never reach the live config).
+   A blank box leaves the loaded levels untouched. ---------- */
+const LEVEL_GAMES = [
+  { id: "dot-connect", ta: "lv_dot", msgEl: "lv_dot_msg", btn: "lvDotCheck", name: "Dot Connect" },
+  { id: "slide-puzzle", ta: "lv_slide", msgEl: "lv_slide_msg", btn: "lvSlideCheck", name: "Slide Puzzle" },
+  { id: "potion-fill", ta: "lv_potion", msgEl: "lv_potion_msg", btn: "lvPotionCheck", name: "Potion Fill" }
+];
+const SLIDE_THEMES = ["hero", "cozy", "rain", "beach", "mountain", "space", "sea", "desert", "park"];
+function validLevelsFor(id, a){
+  if (!Array.isArray(a) || !a.length) return false;
+  for (const e of a){
+    if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+    if (id === "dot-connect"){
+      if (!Number.isInteger(e.n) || e.n < 4 || e.n > 8) return false;
+      if (e.pairs !== undefined && (!Number.isInteger(e.pairs) || e.pairs < 3 || e.pairs > Math.floor(e.n * e.n / 3))) return false;
+    } else if (id === "slide-puzzle"){
+      if (!SLIDE_THEMES.includes(e.theme)) return false;
+      if (e.size !== 3 && e.size !== 4) return false;
+    } else if (id === "potion-fill"){
+      if (e.flasks !== undefined && (!Number.isInteger(e.flasks) || e.flasks < 1 || e.flasks > 10)) return false;
+      if (e.pour !== undefined && (typeof e.pour !== "number" || !(e.pour >= 0.05 && e.pour <= 1.5))) return false;
+      if (e.zone !== undefined && (typeof e.zone !== "number" || !(e.zone >= 0.01 && e.zone <= 0.2))) return false;
+    }
+  }
+  return true;
+}
+/* Parse one levels textarea: {list} ok · {blank:true} box empty ·
+   {error} JSON or structure wrong. */
+function parseLevelsBox(g){
+  const t = $(g.ta).value.trim();
+  if (!t) return { blank: true };
+  let a;
+  try { a = JSON.parse(t); } catch(e){ return { error: "JSON galat hai (" + e.message + ")" }; }
+  if (!validLevelsFor(g.id, a)) return { error: "levels ka format sahi nahi hai — upar wale examples dekho" };
+  return { list: a };
+}
+function refreshLvlSummary(){
+  const el = $("lvlSummary"); if (!el || !CFG) return;
+  const L = CFG.levels || {};
+  el.textContent = LEVEL_GAMES.map(g => {
+    const r = parseLevelsBox(g);
+    const n = r.list ? r.list.length : (Array.isArray(L[g.id]) ? L[g.id].length : 0);
+    return g.name + ": " + n + " levels";
+  }).join(" · ");
+}
+function renderLevels(){
+  const L = (CFG && CFG.levels) || {};
+  for (const g of LEVEL_GAMES){
+    $(g.ta).value = Array.isArray(L[g.id]) ? JSON.stringify(L[g.id], null, 1) : "";
+    $(g.msgEl).textContent = "";
+  }
+  refreshLvlSummary();
+}
+function checkLevelsBox(g){
+  const r = parseLevelsBox(g);
+  const m = $(g.msgEl);
+  if (r.blank){ m.textContent = "Khaali hai — purane levels hi rahenge (ya built-in, agar config me levels the hi nahi)."; m.style.color = "#f5c542"; refreshLvlSummary(); return true; }
+  if (r.error){ m.textContent = "✗ " + r.error; m.style.color = "#ff8787"; return false; }
+  m.textContent = "✓ Sahi hai — " + r.list.length + " levels"; m.style.color = "#51cf66";
+  refreshLvlSummary();
+  return true;
+}
+for (const g of LEVEL_GAMES) $(g.btn).addEventListener("click", () => checkLevelsBox(g));
+/* Save gate: any non-blank levels box that fails validation stops
+   the save BEFORE anything is written, with the reason. */
+function levelsSaveGate(){
+  for (const g of LEVEL_GAMES){
+    if (!checkLevelsBox(g)){
+      alert("Levels me galti hai (" + g.name + ") — save rok diya hai. Pehle us game ka levels JSON theek karo, phir save karo. Baaki settings bhi abhi save nahi hui hain.");
+      return false;
+    }
+  }
+  return true;
+}
+function collectLevels(){
+  for (const g of LEVEL_GAMES){
+    const r = parseLevelsBox(g);
+    if (r.list){
+      CFG.levels = CFG.levels || {};
+      CFG.levels[g.id] = r.list;
+    }
+  }
 }
 
 function countsLine(){
@@ -502,6 +611,7 @@ $("loadFile").addEventListener("change", e => {
 });
 $("download").addEventListener("click", () => {
   if (!cfgSaveGuard()) return;
+  if (!levelsSaveGate()) return;
   const blob = new Blob([serializeConfig(collect())], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "config.json"; a.click();
   msg("Downloaded — upload it to your repo/Pages to go live.");
@@ -510,6 +620,7 @@ $("ghSave").addEventListener("click", async () => {
   const owner = $("ghOwner").value.trim(), repo = $("ghRepo").value.trim(), path = $("ghPath").value.trim(), tok = $("ghToken").value.trim();
   if (!owner || !repo || !tok){ alert("Fill owner, repo and token."); return; }
   if (!cfgSaveGuard()) return;
+  if (!levelsSaveGate()) return;
   const api = "https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + path;
   const hdr = { "Authorization": "Bearer " + tok, "Accept": "application/vnd.github+json" };
   try {

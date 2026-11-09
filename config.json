@@ -11,17 +11,17 @@
    "#1d2b1f"
   ],
   "imageUrl": "",
-  "mode": "gradient"
+  "mode": "moneyRain"
  },
  "banner": {
   "on": true,
   "text": "Diwali week bonus - double coins on Every game 🎯"
  },
  "bc": {
-  "on": true,
-  "text": "This is broadcast message ",
-  "title": "Big news ",
-  "ver": 1
+  "on": false,
+  "text": "",
+  "title": "",
+  "ver": 0
  },
  "challenge": {
   "enabled": true,
@@ -249,7 +249,7 @@
  "jobsFeedUrl": "",
  "notify": {
   "on": true,
-  "hour": 2,
+  "hour": 8,
   "texts": [
    "Good morning! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
   ]
@@ -390,6 +390,186 @@
     "color": "#f1c40f",
     "label": "100",
     "weight": 3
+   }
+  ]
+ },
+ "levels": {
+  "dot-connect": [
+   {
+    "n": 5
+   },
+   {
+    "n": 5
+   },
+   {
+    "n": 5
+   },
+   {
+    "n": 5
+   },
+   {
+    "n": 6
+   },
+   {
+    "n": 6
+   },
+   {
+    "n": 6
+   },
+   {
+    "n": 6
+   },
+   {
+    "n": 7
+   },
+   {
+    "n": 7
+   },
+   {
+    "n": 7
+   },
+   {
+    "n": 7
+   }
+  ],
+  "slide-puzzle": [
+   {
+    "theme": "hero",
+    "size": 3
+   },
+   {
+    "theme": "cozy",
+    "size": 4
+   },
+   {
+    "theme": "rain",
+    "size": 3
+   },
+   {
+    "theme": "beach",
+    "size": 4
+   },
+   {
+    "theme": "mountain",
+    "size": 3
+   },
+   {
+    "theme": "space",
+    "size": 4
+   },
+   {
+    "theme": "sea",
+    "size": 3
+   },
+   {
+    "theme": "desert",
+    "size": 4
+   },
+   {
+    "theme": "park",
+    "size": 3
+   }
+  ],
+  "potion-fill": [
+   {
+    "flasks": 4,
+    "pour": 0.3,
+    "zone": 0.085
+   },
+   {
+    "flasks": 5,
+    "pour": 0.33,
+    "zone": 0.07650000000000001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.36300000000000004,
+    "zone": 0.06885000000000001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.3993000000000001,
+    "zone": 0.06196500000000001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.4392300000000001,
+    "zone": 0.055768500000000006
+   },
+   {
+    "flasks": 6,
+    "pour": 0.48315300000000017,
+    "zone": 0.05019165000000001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.5314683000000002,
+    "zone": 0.045172485000000005
+   },
+   {
+    "flasks": 6,
+    "pour": 0.5846151300000003,
+    "zone": 0.04065523650000001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.6430766430000004,
+    "zone": 0.03658971285000001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.03293074156500001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.02963766740850001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.02667390066765001
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.02400651060088501
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.021605859540796506
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.019445273586716858
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.018
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.018
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.018
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.018
+   },
+   {
+    "flasks": 6,
+    "pour": 0.66,
+    "zone": 0.018
    }
   ]
  }
