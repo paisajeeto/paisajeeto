@@ -37,6 +37,7 @@
       <button class="btn ghost" id="loadFileBtn">Open config.json file</button>
       <input type="file" id="loadFile" accept=".json" style="display:none">
     </div>
+    <div id="loadSummary" style="display:none; margin-top:10px; font-weight:600; color:#1e7d32"></div>
   </div>
 
   <div class="card"><h2>App</h2>
@@ -343,16 +344,56 @@ function collect(){
   return CFG;
 }
 
+/* ---------- config load safety (2026-11-09) ----------
+   The panel boots on blank DEFAULTS (1 wheel segment, 0 games). If the
+   live config fails to load — dead network, bad URL — those defaults
+   LOOK like a real config, and one Save/Download would wipe the live
+   config.json. So: (1) a config counts as loaded only after a fetch or
+   file read that validates (non-empty games list); (2) Save-to-GitHub
+   and Download are both BLOCKED until then; (3) a summary line shows
+   what was loaded, so the owner can SEE the load worked; (4) URL loads
+   retry once automatically after ~1.5s before giving up. */
+async function fetchCfg(url){
+  for (let attempt = 0; attempt < 2; attempt++){
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      const j = await r.json();
+      if (!j || !Array.isArray(j.games) || !j.games.length) throw new Error("bad config");
+      return j;
+    } catch(e){ if (attempt === 1) throw e; await new Promise(res => setTimeout(res, 1500)); }
+  }
+}
+function showLoadSummary(){
+  const el = $("loadSummary"); if (!el) return;
+  const g = (CFG.games || []).length, w = (CFG.wheel && CFG.wheel.segments || []).length, p = (CFG.payouts || []).length;
+  el.textContent = "Loaded ✓ — " + g + " games, " + w + " wheel segments, " + p + " payouts";
+  el.style.display = "";
+}
+function cfgSaveGuard(){
+  if (!window.__CFG_LOADED || !(CFG && CFG.games && CFG.games.length)){
+    alert("Config load nahi hui hai — pehle Load from URL dabao. Khaali config save karne se app ki saari settings ud jayengi.");
+    return false;
+  }
+  return true;
+}
+
 $("loadUrl").addEventListener("click", async () => {
-  try { const r = await fetch($("cfgUrl").value.trim(), { cache: "no-store" }); const j = await r.json(); if (!j || !Array.isArray(j.games) || !j.games.length) throw new Error("bad config"); fill(j); window.__CFG_LOADED = true; msg("Config loaded ✓"); }
+  try { const j = await fetchCfg($("cfgUrl").value.trim()); fill(j); window.__CFG_LOADED = true; msg("Config loaded ✓"); showLoadSummary(); }
   catch(e){ alert("Could not load that URL. Check it opens in your browser."); }
 });
 $("loadFileBtn").addEventListener("click", () => $("loadFile").click());
 $("loadFile").addEventListener("change", e => {
   const f = e.target.files[0]; if (!f) return;
-  f.text().then(t => { fill(JSON.parse(t)); window.__CFG_LOADED = true; msg("File loaded ✓"); });
+  f.text().then(t => {
+    try {
+      const j = JSON.parse(t);
+      if (!j || !Array.isArray(j.games) || !j.games.length) throw new Error("bad config");
+      fill(j); window.__CFG_LOADED = true; msg("File loaded ✓"); showLoadSummary();
+    } catch(e){ alert("Ye file valid config nahi hai — games list khaali hai. Koi aur config file chuno, ya Load from URL dabao."); }
+  });
 });
 $("download").addEventListener("click", () => {
+  if (!cfgSaveGuard()) return;
   const blob = new Blob([JSON.stringify(collect(), null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "config.json"; a.click();
   msg("Downloaded — upload it to your repo/Pages to go live.");
@@ -360,7 +401,7 @@ $("download").addEventListener("click", () => {
 $("ghSave").addEventListener("click", async () => {
   const owner = $("ghOwner").value.trim(), repo = $("ghRepo").value.trim(), path = $("ghPath").value.trim(), tok = $("ghToken").value.trim();
   if (!owner || !repo || !tok){ alert("Fill owner, repo and token."); return; }
-  if (!window.__CFG_LOADED){ alert("⚠ STOP — the live config was NOT loaded in this panel session, so the panel is showing blank defaults. Saving now would WIPE your real config (games, payouts, email). Tap 'Load' at the top first, check that your games and payout methods are visible, then save."); return; }
+  if (!cfgSaveGuard()) return;
   const api = "https://api.github.com/repos/" + owner + "/" + repo + "/contents/" + path;
   const hdr = { "Authorization": "Bearer " + tok, "Accept": "application/vnd.github+json" };
   try {
@@ -377,7 +418,7 @@ $("ghSave").addEventListener("click", async () => {
 
 fill(JSON.parse(JSON.stringify(DEFAULTS)));
 /* auto-load the live config on open so the panel never sits on blank defaults */
-(async () => { try { const r = await fetch($("cfgUrl").value.trim(), { cache: "no-store" }); const j = await r.json(); if (j && Array.isArray(j.games) && j.games.length){ fill(j); window.__CFG_LOADED = true; msg("Live config loaded automatically ✓"); } } catch(e){} })();
+(async () => { try { const j = await fetchCfg($("cfgUrl").value.trim()); fill(j); window.__CFG_LOADED = true; msg("Live config loaded automatically ✓"); showLoadSummary(); } catch(e){} })();
 </script>
 </body>
 </html>
