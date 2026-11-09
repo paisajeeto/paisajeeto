@@ -1,7 +1,7 @@
 {
  "ads": {
   "gapMinutes": 0,
- "banner": true
+  "banner": true
  },
  "appName": "PaisaJeeto",
  "appTagline": "Sab Khelo, Sab Jeeto",
@@ -18,10 +18,10 @@
   "text": "Diwali week bonus - double coins on Every game 🎯"
  },
  "bc": {
-  "on": false,
-  "text": "",
-  "title": "",
-  "ver": 0
+  "on": true,
+  "text": "This is broadcast message ",
+  "title": "Big news ",
+  "ver": 1
  },
  "challenge": {
   "enabled": true,
