@@ -52,7 +52,8 @@
       "subtitle": "Tap to flap, dodge the pipes",
       "title": "Flappy Coin",
       "type": "url",
-      "url": "games/flappy-coin.html"
+      "url": "games/flappy-coin.html",
+      "challenge": true
     },
     {
       "coinsPerPoint": 1,
@@ -107,7 +108,7 @@
       "url": "games/head-ball.html"
     },
     {
-      "challenge": true,
+      "challenge": false,
       "coinsPerPoint": 1,
       "dailyCap": 1000,
       "enabled": true,
@@ -246,9 +247,9 @@
   "jobsFeedUrl": "",
   "notify": {
     "on": true,
-    "hour": 20,
+    "hour": 9,
     "texts": [
-      "Good evening 🌆 ! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
+      "Good morning 🌄! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
     ]
   },
   "payoutFormUrl": "",
