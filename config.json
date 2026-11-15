@@ -1,7 +1,8 @@
 {
  "ads": {
   "gapMinutes": 0,
-  "banner": true
+  "banner": true,
+  "clickLimit": 4
  },
  "appName": "PaisaJeeto",
  "appTagline": "Sab Khelo, Sab Jeeto",
