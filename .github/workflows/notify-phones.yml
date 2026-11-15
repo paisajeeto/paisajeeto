@@ -1,0 +1,42 @@
+name: Notify phones on config change
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - config.json
+
+jobs:
+  push-config-change:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      - name: Send FCM data message to topic config
+        env:
+          GCP_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          cfg = json.load(open('config.json'))
+          msg = {
+            "message": {
+              "topic": "config",
+              "data": {
+                "type": "config-changed",
+                "notify": json.dumps(cfg.get('notify', {}))
+              }
+            }
+          }
+          req = urllib.request.Request(
+            "https://fcm.googleapis.com/v1/projects/paisajeeto-75459/messages:send",
+            data=json.dumps(msg).encode(),
+            headers={"Authorization": "Bearer " + os.environ["GCP_TOKEN"], "Content-Type": "application/json"},
+            method="POST",
+          )
+          with urllib.request.urlopen(req) as r:
+            print("FCM send:", r.status, r.read().decode()[:300])
+          PY
