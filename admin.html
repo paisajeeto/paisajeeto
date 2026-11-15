@@ -158,6 +158,8 @@
     <p class="muted">The phone itself shows one reminder every morning — no server, no Firebase campaign needed. The app re-arms the next 7 mornings every time it is opened. Write one message per line; they rotate day by day. Use <b>{coins}</b> for the user's balance and <b>{plays}</b> for today's remaining free plays — both are filled in automatically.</p>
     <label><input type="checkbox" id="f_notifyOn" style="width:auto"> Morning notification on</label>
     <label>Hour of the morning (0–23)</label><input id="f_notifyHour" type="number">
+    <label>Minute of the bell (0–59)</label><input id="f_notifyMinute" type="number">
+    <p class="muted">Bell time is hour : minute, e.g. 11:20 — the bell rings once a day at that time. If the time has already passed today, the next ring is tomorrow at that time.</p>
     <label>Messages (one per line)</label><textarea id="f_notifyTexts" rows="4" placeholder="Good morning! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"></textarea>
   </div>
 
@@ -190,7 +192,7 @@
     <label>GitHub token (fine-grained, Contents: read &amp; write — stored only in this browser tab)</label>
     <input id="ghToken" type="password" placeholder="github_pat_…">
     <div style="margin-top:10px"><button class="btn" id="ghSave">Save to GitHub</button></div>
-    <p class="muted" style="margin-top:10px">After saving, reopen the app — changes appear within about a minute (GitHub Pages cache).</p>
+    <p class="muted" style="margin-top:10px">After saving, bell-time changes are pushed to phones within about a minute (once the sender workflow is set up); other changes appear when the app is reopened (GitHub Pages cache: ~1 minute).</p>
   </div>
 </div>
 
@@ -215,7 +217,7 @@ const $ = id => document.getElementById(id);
 function msg(t){ const m = $("msg"); m.textContent = t; m.style.display = "block"; setTimeout(() => m.style.display = "none", 3500); }
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 PAISAJEETO — Sab Khelo, Sab Jeeto Challenge","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""},"banner":{"on":false,"text":""},"sponsors":[],"sponsorSecs":6,"bc":{"on":false,"title":"","text":"","ver":0},"notify":{"on":false,"hour":8,"texts":[]},"terms":["Fixed rate: **100 coins = ₹1**.", "Minimum redemption is **1,000 coins (₹10)**.", "Redemption unlocks after **one successful referral** — a friend who joined with your referral code and has played for **48 hours**.", "Payout requests are **reviewed and paid within 48 hours**.", "**One account per device.** Creating multiple accounts to farm bonuses can void a payout.", "You must be **18 or older** to redeem.", "Coins are promotional rewards for playing. They have **no value outside this app**, cannot be bought, and cannot be transferred between accounts."],"ads":{"gapMinutes":0}};
+const DEFAULTS = {"appName":"PaisaJeeto","appTagline":"Sab Khelo, Sab Jeeto","tagline":"Play • Earn • Redeem","background":{"mode":"moneyRain","imageUrl":"","gradient":["#10131a","#1d2b1f"]},"wallet":{"coinsPerRupee":100,"dailyBonusCoins":25},"wheel":{"freeSpinsPerDay":3,"extraSpinPerAd":true,"segments":[{"label":"10","coins":10,"weight":20,"color":"#e74c3c"}]},"games":[],"dailyQuest":{"enabled":true,"title":"Play All Games Daily","bonusCoins":50},"challenge":{"enabled":true,"title":"🏆 PAISAJEETO — Sab Khelo, Sab Jeeto Challenge","subtitle":"1 free try per game daily. Win to earn coins — lose and you get nothing! Watch an ad to try again.","freePerDay":1},"referral":{"enabled":true,"welcomeBonus":50},"jobs":[],"jobsFeedUrl":"","sniperAssets":{"bg":"","rifle":"","scope":"","bottle":"","can":"","coin":"","broken":"","fire":"","shotSound":"","glassSound":""},"tasks":[],"payouts":[],"payoutFormUrl":"","supportWhatsapp":"","supportEmail":"","firebase":{"enabled":false,"apiKey":"","authDomain":"","projectId":"","appId":""},"banner":{"on":false,"text":""},"sponsors":[],"sponsorSecs":6,"bc":{"on":false,"title":"","text":"","ver":0},"notify":{"on":false,"hour":8,"minute":0,"texts":[]},"terms":["Fixed rate: **100 coins = ₹1**.", "Minimum redemption is **1,000 coins (₹10)**.", "Redemption unlocks after **one successful referral** — a friend who joined with your referral code and has played for **48 hours**.", "Payout requests are **reviewed and paid within 48 hours**.", "**One account per device.** Creating multiple accounts to farm bonuses can void a payout.", "You must be **18 or older** to redeem.", "Coins are promotional rewards for playing. They have **no value outside this app**, cannot be bought, and cannot be transferred between accounts."],"ads":{"gapMinutes":0}};
 
 /* The live config.json format: JSON.stringify with indent 1, keys in
    their loaded order, no trailing newline. Saving an untouched loaded
@@ -268,6 +270,7 @@ function fill(c){
   CFG.notify = CFG.notify || {on:false, hour:8, texts:[]};
   $("f_notifyOn").checked = CFG.notify.on === true;
   $("f_notifyHour").value = CFG.notify.hour ?? 8;
+  $("f_notifyMinute").value = CFG.notify.minute ?? 0;
   $("f_notifyTexts").value = (CFG.notify.texts || []).join("\n");
   CFG.terms = Array.isArray(CFG.terms) ? CFG.terms : [];
   $("f_terms").value = CFG.terms.map(l => "• " + l).join("\n");
@@ -402,6 +405,7 @@ function collect(){
   if (bcBump){ window.__bcVer = bcVer; $("bcVerNow").textContent = bcVer; $("f_bcBump").checked = false; }   // one-shot: the baseline moves up, so a second save in this session can never downgrade the version
   CFG.notify = CFG.notify || {};
   CFG.notify.on = $("f_notifyOn").checked; CFG.notify.hour = Number($("f_notifyHour").value) || 8; CFG.notify.texts = $("f_notifyTexts").value.split("\n").map(s => s.trim()).filter(Boolean);
+  const _mn = Math.floor(Number($("f_notifyMinute").value)); CFG.notify.minute = (isFinite(_mn) && _mn >= 0 && _mn <= 59) ? _mn : 0;   // minute precision (2026-11-15): invalid → :00
   CFG.terms = $("f_terms").value.split("\n").map(s => s.trim().replace(/^•\s*/, "")).filter(Boolean);
   CFG.ads = CFG.ads || {};
   CFG.ads.gapMinutes = Number($("f_adGap").value) || 0;
