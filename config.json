@@ -250,11 +250,11 @@
  "jobsFeedUrl": "",
  "notify": {
   "on": true,
-  "hour": 20,
+  "hour": 23,
   "texts": [
    "Good afternoon! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
   ],
-  "minute": 20
+  "minute": 7
  },
  "payoutFormUrl": "",
  "payouts": [
