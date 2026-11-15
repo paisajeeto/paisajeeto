@@ -2,7 +2,7 @@
  "ads": {
   "gapMinutes": 0,
   "banner": true,
-  "clickLimit": 1
+  "clickLimit": 4
  },
  "appName": "PaisaJeeto",
  "appTagline": "Sab Khelo, Sab Jeeto",
@@ -15,11 +15,11 @@
   "mode": "moneyRain"
  },
  "banner": {
-  "on": true,
+  "on": false,
   "text": "Diwali week bonus - double coins on Every game 🎯"
  },
  "bc": {
-  "on": true,
+  "on": false,
   "text": "",
   "title": "Big news",
   "ver": 3
@@ -250,11 +250,11 @@
  "jobsFeedUrl": "",
  "notify": {
   "on": true,
-  "hour": 1,
+  "hour": 8,
   "texts": [
-   "Good afternoon! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
+   "Good morning! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
   ],
-  "minute": 3
+  "minute": 0
  },
  "payoutFormUrl": "",
  "payouts": [
@@ -304,7 +304,7 @@
    "btn": "Open",
    "link": "https://",
    "img": "",
-   "on": true
+   "on": false
   }
  ],
  "supportEmail": "paisajeeto3@gmail.com",
