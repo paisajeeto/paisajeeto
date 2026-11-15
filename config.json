@@ -272,11 +272,6 @@
    "method": "Amazon Gift Card",
    "minCoins": 1000,
    "note": "100 coins = ₹1 of gift card value. Paid within 48 hours."
-  },
-  {
-   "method": "Kotak",
-   "minCoins": 1000,
-   "note": "100 coins = ₹1. Paid within 48 hours."
   }
  ],
  "referral": {
