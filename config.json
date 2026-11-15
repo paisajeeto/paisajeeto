@@ -22,7 +22,7 @@
   "on": true,
   "text": "",
   "title": "Big news",
-  "ver": 1
+  "ver": 2
  },
  "challenge": {
   "enabled": true,
@@ -250,11 +250,11 @@
  "jobsFeedUrl": "",
  "notify": {
   "on": true,
-  "hour": 18,
+  "hour": 13,
   "texts": [
    "Good afternoon! 🌞 You have {plays} free plays waiting today — your balance is {coins} coins 🪙"
   ],
-  "minute": 8
+  "minute": 1
  },
  "payoutFormUrl": "",
  "payouts": [
